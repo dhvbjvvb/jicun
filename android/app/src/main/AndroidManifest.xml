@@ -1,0 +1,153 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 解析接口和下载都是网络请求。调试清单里那份只对 debug 构建生效,
+         release 包必须在主清单声明,否则装上去所有网络调用直接失败。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 应用内更新:下完 APK 要拉起系统安装器。Android 8 起还得用户在系统设置里
+         单独给「安装未知应用」授权,这里只声明"我要装应用"。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 9 及以下往公共目录写文件需要这个权限;targetSdk 29 起系统不再
+         要求,所以用 maxSdkVersion 把它限制在老系统上,新系统不申请。 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <application
+        android:label="@string/app_name"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:largeHeap="true">
+        <!-- largeHeap:预览那个播放器是 ExoPlayer(走 media3),它按「秒数」缓冲
+             而不按字节数 —— 抖音这条 8K 原画是 34 Mbps,缓冲几十秒就是 200MB 上下,
+             正好把默认的 256MB Java 堆吃光,报 java.lang.OutOfMemoryError 然后闪退
+             (真机 tombstone 实测:target footprint 268435456,growth limit 同值)。
+             开这个把堆上限抬到 512MB 甚至更高。它不解决"为什么缓冲这么多",只是
+             把天花板抬起来;真要根治得让预览只拉低码率那一档。 -->
+        <!-- ── 启动入口:一个主题一档 ─────────────────────────────────────────────
+             用户点的那个图标就是下面这两个组件之一。启动窗口(system 画的 starting
+             window)用的是**被启动组件自己的主题**,所以这里各挂一份写死不跟 night
+             走的静态主题(LaunchThemeLight/Dark),哪一档由 MainActivity 按落盘的
+             主题切启用状态(见 LaunchActivities.kt、MainActivity.syncLaunchEntry)。
+
+             为什么不能只用 MainActivity 一个入口:启动窗口在 Activity 起来之前就画
+             好了,主题里带 night 限定符时它取的是**系统**那一档 —— 用户在 app 里手动
+             换档系统没变,启动图就还是上一档(真机实测,vivo 上
+             UiModeManager.setApplicationNightMode 也拽不回来)。
+
+             除了主题,下面两份 Activity 的属性必须和 MainActivity 一字不差
+             (configChanges 里少了 uiMode 的话,换主题会重建 Activity、启动图会再闪
+             一次;taskAffinity/launchMode 不一样则会出现第二个任务)。 -->
+        <activity
+            android:name=".LaunchLightActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchThemeLight"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustNothing">
+            <!-- NormalTheme 必须挂在这里:FlutterActivity 是从**被启动组件**的
+                 meta-data 里读它的(见 FlutterActivity.getNormalThemeResId)。
+                 少了这条,Flutter 首帧背后会一直挂着启动图那张 layer-list(一只鸟),
+                 交接处就是一只残影。 -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".LaunchDarkActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchThemeDark"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustNothing">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- 真正干活的那个 Activity:通道、下载器、Flutter 引擎都在这儿。
+
+             它**不带** MAIN/LAUNCHER 了 —— launcher 入口是上面那两个组件,否则
+             launcher 里会出现第二个图标,而且那个图标走的是跟着系统深浅跑的老路。
+             留着 exported 是给开发路径用的:`am start -n <包名>/.MainActivity`
+             (见 lib/bench.dart、tool/ 下那几个脚本)照样能起来,主题是老的
+             LaunchTheme(跟着 app 的夜间配置走)。
+
+             键盘用 adjustNothing,不是 adjustResize。
+                 resize 会让窗口随键盘收缩,系统就要在这个窗口上逐帧跑 IME 的
+                 insets 动画(真机 trace 里能看到 InsetsAnimation: ime /
+                 dispatchApplyInsets / windowResized 全压在主线程上),
+                 结果是 20 帧里有 11 帧超期被丢、帧间隔拉到 84~119ms ——
+                 换任何输入法都一样,因为动画是窗口系统在跑,不是输入法在跑。
+                 界面本来也不为键盘让位(根 GlassScaffold 是
+                 resizeToAvoidBottomInset: false,输入框在页面顶部),
+                 所以窗口收缩纯属白跑:改成 nothing 后键盘直接盖在内容上。 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustNothing">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+        </activity>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+        <!-- 应用内更新的安装包住在应用私有缓存目录里。Android 7 起不能把 file://
+             递给安装器(FileUriExposedException),必须由 FileProvider 换成
+             content:// 并临时授权。paths 见 res/xml/file_paths.xml。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_icon_color" />
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>

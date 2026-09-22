@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light mode launch window (API 21+). Flat base matching the first frame's
+     _LightThemeBackgroundPainter, plus the launch mark centred on top of it.
+     Dark mode has a drawable-night override that replicates the first frame's
+     gradient exactly.
+
+     The mark is drawable-xxxhdpi/splash_logo.png — the platform artwork as given
+     (1252px, i.e. 313dp there), drawn at 288dp: that is the size Android 12+ paints
+     it at, and the size Flutter's own fade-out layer uses (main.dart,
+     _kSplashLogoSize) — same bird, same place, so the hand-off from the system
+     splash to the first frame has nothing to jump.
+     gravity=center keeps it square; the default gravity is fill. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_background_color" />
+    <item
+        android:width="288dp"
+        android:height="288dp"
+        android:drawable="@drawable/splash_logo"
+        android:gravity="center" />
+</layer-list>

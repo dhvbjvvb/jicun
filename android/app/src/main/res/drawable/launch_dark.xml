@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深色那一档的启动窗口背景,由 LaunchThemeDark 用(LaunchDarkActivity)。
+
+     内容 = 原 drawable-night/launch_background.xml:复刻 Flutter 首帧那条
+     `LinearGradient(topCenter→bottomCenter, #000000→#434343)`,两端点和轴都一样,
+     冷启动窗口与首帧对齐。API 31+ 那套系统启动图不吃这张,它只吃
+     windowSplashScreenBackground 的一个纯色(@color/launch_dark),那条在
+     values-v31/styles.xml 里。
+
+     和浅色那份一样:**不带 night 限定符**,否则又跟着系统跑。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="270"
+                android:startColor="#FF000000"
+                android:endColor="#FF434343" />
+        </shape>
+    </item>
+    <item
+        android:width="288dp"
+        android:height="288dp"
+        android:drawable="@drawable/splash_logo"
+        android:gravity="center" />
+</layer-list>

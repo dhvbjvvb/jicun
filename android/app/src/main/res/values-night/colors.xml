@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark mode: matches GlassScaffold.backgroundColor (0xFF434343) and the
+         bottom stop of the first-frame gradient.
+
+         这**不是**能给首帧凑数的中间调:鸟的脚是深墨色(约 #222632),画在白身
+         之外、直接压在底色上 —— 底色再压暗一档(#212121 试过),那两只脚就和底
+         融成一片,启动图里的鸟看着像没有脚。所以深色这边保持 #434343。 -->
+    <color name="launch_background_color">#434343</color>
+</resources>

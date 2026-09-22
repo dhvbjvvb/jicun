@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 能对外暴露的目录清单。应用内更新的 APK 下在应用私有缓存里
+     (getTemporaryDirectory() → /data/user/0/<包名>/cache),所以只开 cache-path。
+     开 root-path 就等于把应用私有目录整个递给外部应用,没必要也不安全。 -->
+<paths>
+    <cache-path name="cache" path="." />
+</paths>

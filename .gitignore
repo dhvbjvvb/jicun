@@ -1,34 +1,68 @@
-# Gradle files
-.gradle/
-build/
-
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Log/OS Files
+# Miscellaneous
+*.class
 *.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
 
-# Android Studio generated files and folders
-captures/
-.externalNativeBuild/
-.cxx/
-*.aab
-*.apk
-output-metadata.json
-
-# IntelliJ
+# IntelliJ related
 *.iml
+*.ipr
+*.iws
 .idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
 
-# Keystore files
-*.jks
-*.keystore
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
 
-# Google Services (e.g. APIs or Firebase)
-google-services.json
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/android/build/
+/android/.kotlin/
+/coverage/
 
-# Android Profiling
-*.hprof
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview related
+.widget_preview/
+
+# 签名材料:密钥和口令都不进版本库
+/android/key.properties
+/android/app/*.jks
+/android/app/*.keystore
+
+# 上游密钥:只留模板,真值不进版本库
+/lib/secrets.dart
+
+# 本地调试产物:截图、录屏、探针日志都不进版本库
+/_audit/
+/_dl_card/
+/_ks/
+/_perf_kb/
+/_splashfix/
+*.mp4
+/tool/__pycache__/
+__pycache__/

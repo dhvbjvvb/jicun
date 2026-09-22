@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch window background, dark mode.
+     Replicates the first frame the Flutter UI paints:
+       LinearGradient(begin: topCenter, end: bottomCenter,
+                      colors: [Color(0xFF000000), Color(0xFF434343)])
+     in lib/main.dart (_ThemeBackground). Same endpoints, same axis, so the
+     cold-start window and the first Flutter frame are pixel-identical and the
+     hand-off is invisible.
+
+     The launch mark is shared with light mode: the artwork is a white bird with
+     a dark outline, so it reads on the black-to-grey gradient as well (the
+     outline softens, the white body carries the silhouette). Put a
+     drawable-night-xxxhdpi/splash_logo.png next to it if dark ever needs its own
+     art. Drawn at 288dp — the size the system splash uses on Android 12+ and the
+     size Flutter's fade-out layer uses (main.dart, _kSplashLogoSize). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="270"
+                android:startColor="#FF000000"
+                android:endColor="#FF434343" />
+        </shape>
+    </item>
+    <item
+        android:width="288dp"
+        android:height="288dp"
+        android:drawable="@drawable/splash_logo"
+        android:gravity="center" />
+</layer-list>

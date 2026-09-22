@@ -1,0 +1,8 @@
+# 每 10 分钟把 APP 上报的优选 IP 重算成 /var/www/jicun/ips.json。
+#
+# 文件要放在 /etc/cron.d/ 下,权限 644、属主 root,而且最后必须有换行 ——
+# 少了换行 cron 会静默忽略最后一行。
+#
+# 发布节奏和统计窗口是两回事:上报日志不是每跑一次就清空,而是攒够行数才轮转
+# (见 jicun-cfip.sh),所以改成 10 分钟一次不会让样本窗口跟着缩短。
+*/10 * * * * root /usr/local/bin/jicun-cfip.sh >/var/log/jicun-cfip-cron.log 2>&1

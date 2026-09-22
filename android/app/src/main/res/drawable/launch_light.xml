@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 浅色那一档的启动窗口背景,由 LaunchThemeLight 用(LaunchLightActivity)。
+
+     **不带 night 限定符是这件事的全部意义**:启动窗口在 Activity 起来之前就画好了,
+     资源只按被启动组件的主题取。带 night 的话用户在 app 里换档时这里不会跟着变
+     (系统那一档没动),启动图就停在旧档。色值/尺寸和 drawable/launch_background.xml
+     一字不差,只是不再分档。
+
+     minSdk 24,所以不需要 drawable-v21 那一份(模板里那份是给 API 21 以下的)。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_light" />
+    <item
+        android:width="288dp"
+        android:height="288dp"
+        android:drawable="@drawable/splash_logo"
+        android:gravity="center" />
+</layer-list>

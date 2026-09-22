@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adaptive-icon background layer. The source art is drawn on white, so the
+         icon plate stays white. -->
+    <color name="ic_launcher_background">#FFFFFFFF</color>
+    <!-- Notification accent. The small icon is drawn as an alpha mask and
+         painted with this colour, so it has to contrast with the plate the
+         system puts behind it: white left a white silhouette on the light
+         circle Android 12+ draws. Same ink as the artwork's own outline. -->
+    <color name="notification_icon_color">#FF1F2A37</color>
+    <!-- 启动窗口的两个**静态**档(见 styles.xml 的 LaunchThemeLight/Dark)。
+
+         刻意**不带 night 限定符**,也不再跟着 launch_background_color 走:启动窗口是
+         系统在 Activity 起来之前画的,它只认被启动组件自己的主题里写死的东西。带
+         night 它就跟着**系统**深浅跑 —— 用户在 app 里手动换档,系统那边什么都没变,
+         启动图就还是上一档(真机实测:换完主题紧接着冷启动,启动图仍是旧档)。
+
+         色值必须和下面 launch_background_color 的两档一模一样,否则启动窗口和
+         NormalTheme 那个窗口之间会跳色。 -->
+    <color name="launch_light">#CDDCDC</color>
+    <color name="launch_dark">#434343</color>
+    <color name="launch_transparent">#00000000</color>
+
+    <!-- Launch/splash window background (light mode).
+         浅色首帧不是一块平色(#CDDCDC 打底 + 一层白→黑的叠加 + 底部中心一团径向
+         亮光,实测整屏 207~236),而启动窗口只吃一个纯色。**这里就固定 #CDDCDC**:
+         它是最初定的那一版,和 GlassScaffold.backgroundColor 同值。
+
+         曾经拿它去凑首帧的平均值(#D3DEDE)—— 那属于"改启动图的参数",用户看到的是
+         "启动图又变了",已改回。要不要往首帧靠,等人明确说了再动。
+         启动图的参数清单见 test/splash_params_test.dart。 -->
+    <color name="launch_background_color">#CDDCDC</color>
+</resources>
