@@ -58,6 +58,8 @@ import 'ui/icons.dart';
 import 'ui/clipboard.dart';
 import 'ui/widgets.dart';
 import 'ui/palette.dart';
+import 'pages/parse.dart';
+import 'pages/history.dart';
 
 /// 拉服务端下发的域名表与优选 IP 并落盘。
 ///
@@ -156,7 +158,7 @@ class LiquidGlassDemo extends StatefulWidget {
   final bool autoCheckUpdate;
 
   @override
-  State<LiquidGlassDemo> createState() => _LiquidGlassDemoState();
+  State<LiquidGlassDemo> createState() => HomeShellState();
 }
 
 /// 横滑切板块:横向拖够这么多逻辑像素就算一次。
@@ -165,7 +167,7 @@ const double _kTabSwipeDistance = 80;
 /// 横滑切板块:够快的一挥也算,不看拖了多远(px/s)。
 const double _kTabSwipeVelocity = 400;
 
-class _LiquidGlassDemoState extends State<LiquidGlassDemo>
+class HomeShellState extends State<LiquidGlassDemo>
     with WidgetsBindingObserver {
   /// 当前板块。**不是**普通字段 + setState:底栏那一下如果走根 setState,整个
   /// CupertinoApp(连同 Navigator 和三个页面)都要重建,实测 build 尖峰 40~47ms,
@@ -179,7 +181,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
       WidgetsBinding.instance.platformDispatcher.platformBrightness;
 
   // 二级设置页(主题与外观)可改的项。初值在 initState 里从偏好存储读回。
-  late _ThemeMode _themeMode;
+  late AppThemeMode _themeMode;
   late bool _hideTabLabels;
   late bool _glassBottomBar;
 
@@ -251,29 +253,29 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
 
   // ── 解析页的状态 ──
   //
-  // 刻意放在根 State 上,而不是 _ParsePage 自己的 State 里:切 tab 会把整棵子树
+  // 刻意放在根 State 上,而不是 ParsePage 自己的 State 里:切 tab 会把整棵子树
   // 连同它的 State 一起重建,状态放在页面里的话,解析结果和输入框内容一换 tab
   // 就没了。输入框控制器同理 —— 它的内容也得活着。
-  final ParseService _parseService = ParseService();
+  final ParseService parseService = ParseService();
   final HistoryStore _history = HistoryStore();
-  final TextEditingController _linkController = TextEditingController();
+  final TextEditingController linkController = TextEditingController();
 
   /// 历史记录。同样放在根 State 上:历史页切走就会被重建,数据留在这儿才不会
   /// 每次进来都重新读一遍存储。
   ///
   /// null = 还没读到(测试里没预传、异步读还没回来)。
-  List<HistoryEntry>? _historyEntries;
+  List<HistoryEntry>? historyEntries;
 
-  ParseResult? _parseResult;
+  ParseResult? parseResult;
 
   /// 正在请求。按钮跟着置灰,避免连点打出多次解析。
-  bool _parsing = false;
+  bool parsing = false;
 
   /// 上一次失败的提示文案。成功一次就清掉。
-  String? _parseError;
+  String? parseError;
 
   /// 解析成功后把按钮锁成「完成解析」。点一下输入框、或清空内容才解锁。
-  bool _parseLocked = false;
+  bool parseLocked = false;
 
   /// 输入框上次是不是空的。用来判断「变空/变非空」这一下要不要重画
   /// (见 [_onLinkChanged]:不能每个字符都 setState)。
@@ -281,14 +283,14 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
 
   /// 输入框内容变了:只留有效的链接,并处理清空后的解锁。
   void _onLinkChanged() {
-    final raw = _linkController.text;
+    final raw = linkController.text;
     final url = extractShareUrl(raw);
 
     // 粘进来的是整段分享文本(「7.62 复制打开抖音…https://… 复制此链接」),
     // 这里只留链接本身。改写后 listener 会再跑一次,那次 raw 已经是干净的 URL,
     // 不再匹配 —— 不会死循环。
     if (url != null && url != raw.trim()) {
-      _linkController.value = TextEditingValue(
+      linkController.value = TextEditingValue(
         text: url,
         selection: TextSelection.collapsed(offset: url.length),
       );
@@ -299,44 +301,44 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     // 几张预览卡、SVG 图标)会跟着重建,手动输入时每个字符都卡一下。
     // 只有按钮的可用状态真的会变时才需要重画:空 ↔ 非空、以及清空后的解锁。
     final bool empty = raw.trim().isEmpty;
-    if (empty == _linkWasEmpty && !(empty && _parseLocked)) return;
+    if (empty == _linkWasEmpty && !(empty && parseLocked)) return;
     setState(() {
       // 点了输入框右侧的叉清空内容 → 按钮从「完成解析」变回「开始解析」
-      if (empty) _parseLocked = false;
+      if (empty) parseLocked = false;
     });
     _linkWasEmpty = empty;
   }
 
   /// 用户点了输入框。按需求,这时「完成解析」要放回「开始解析」。
-  void _unlockParse() {
-    if (!_parseLocked) return;
-    setState(() => _parseLocked = false);
+  void unlockParse() {
+    if (!parseLocked) return;
+    setState(() => parseLocked = false);
   }
 
-  Future<void> _startParse(String link) async {
+  Future<void> startParse(String link) async {
     final url = extractShareUrl(link) ?? link.trim();
     if (url.isEmpty) return;
 
     setState(() {
-      _parsing = true;
-      _parseError = null;
-      _parseLocked = false;
+      parsing = true;
+      parseError = null;
+      parseLocked = false;
     });
 
     try {
-      final result = await _parseService.parse(url);
+      final result = await parseService.parse(url);
       if (!mounted) return;
-      _linkController.text = url;
+      linkController.text = url;
       setState(() {
-        _parseResult = result;
-        _parsing = false;
-        _parseLocked = true;
+        parseResult = result;
+        parsing = false;
+        parseLocked = true;
       });
       // 只有解析成功才记历史 —— 失败不记,否则历史里全是没用的失败条目。
       // 存储出问题(写满、插件异常)不该影响这次展示,所以吞掉。
       try {
         final entries = await _history.add(result, url);
-        if (mounted) setState(() => _historyEntries = entries);
+        if (mounted) setState(() => historyEntries = entries);
       } catch (_) {}
 
       // 顺手把封面拉进图片缓存。解析完这张图只出现在解析页,历史页要等用户切过去
@@ -351,21 +353,21 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
       }
     } on ParseException catch (e) {
       if (!mounted) return;
-      // 失败时**不**清空 _parseResult:换一条链接没解析出来,把上一份结果擦掉
+      // 失败时**不**清空 parseResult:换一条链接没解析出来,把上一份结果擦掉
       // 会让人以为越用越少。旧结果留着,只在上面加一条错误提示。
       setState(() {
-        _parseError = e.message;
-        _parsing = false;
+        parseError = e.message;
+        parsing = false;
       });
     }
   }
 
   /// 历史卡被单击:带着那条记录的链接回解析页重新解析。
-  Future<void> _reparseFromHistory(HistoryEntry entry) async {
+  Future<void> reparseFromHistory(HistoryEntry entry) async {
     if (entry.sourceUrl.isEmpty) return;
-    _linkController.text = entry.sourceUrl;
+    linkController.text = entry.sourceUrl;
     _selectTab(0);
-    await _startParse(entry.sourceUrl);
+    await startParse(entry.sourceUrl);
   }
 
   /// 读剪贴板里的文字,读不到返回 null。
@@ -383,7 +385,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   ///
   /// 计时器和等待都由页面自己拿着(见 [_clipboardDeadline] / [_clipboardWait]):
   /// 页面销毁时两个一起收掉,不然会留下一个孤儿计时器。
-  Future<String?> _readClipboard() async {
+  Future<String?> readClipboard() async {
     final wait = Completer<String?>();
     _clipboardDeadline?.cancel();
     final timer = Timer(const Duration(milliseconds: 700), _finishClipboardRead);
@@ -419,19 +421,19 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   /// 否则每次从后台回来(比如去系统设置开个权限)都会重复打一次解析。
   /// 读不到(系统拦截、剪贴板是空的)也什么都不做,不打扰用户。
   Future<void> _maybeAutoPasteParse() async {
-    if (!_autoPasteParse || _parsing) return;
-    final text = await _readClipboard();
+    if (!_autoPasteParse || parsing) return;
+    final text = await readClipboard();
     if (!mounted) return;
     final url = text == null ? null : extractShareUrl(text);
     if (url == null || url.isEmpty) return;
     if (url == _lastAutoPasted) return;
     _lastAutoPasted = url;
     // 已经是这条且解析完了:不用再打一次。
-    if (_linkController.text.trim() == url && _parseLocked) return;
-    _unlockParse();
+    if (linkController.text.trim() == url && parseLocked) return;
+    unlockParse();
     _selectTab(0);
-    _linkController.text = url;
-    await _startParse(url);
+    linkController.text = url;
+    await startParse(url);
   }
 
   /// 下载结束后的系统通知。发不出去(没权限、系统静音)就算了 ——
@@ -461,10 +463,10 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   }
 
   /// 历史页删记录。数据在根 State 上,所以得由这里落盘并刷新。
-  Future<void> _deleteHistory(Set<String> ids) async {
+  Future<void> deleteHistory(Set<String> ids) async {
     final entries = await _history.remove(ids);
     if (!mounted) return;
-    setState(() => _historyEntries = entries);
+    setState(() => historyEntries = entries);
   }
 
   /// 供二级设置页调用。setState 是 protected,不能从外部 State 直接调,
@@ -494,7 +496,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   ///
   /// 原生侧见 MainActivity.applyAppNightMode;老系统/别的平台没有这条路,失败就算了
   /// —— 那只影响启动图的深浅,不该让换主题这件事报错。
-  void syncNightModeToNative(_ThemeMode mode) {
+  void syncNightModeToNative(AppThemeMode mode) {
     Downloader.channel.invokeMethod<void>('setThemeMode', <String, String>{
       'mode': mode.name,
     }).ignore();
@@ -508,8 +510,8 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     if (kDebugMode) DownloadBench.checkIntent();
     final prefs = widget.prefs;
     _themeMode =
-        _ThemeMode.values.asNameMap()[prefs?.getString(kPrefsThemeMode)] ??
-        _ThemeMode.system;
+        AppThemeMode.values.asNameMap()[prefs?.getString(kPrefsThemeMode)] ??
+        AppThemeMode.system;
     _hideTabLabels = prefs?.getBool(kPrefsHideTabLabels) ?? false;
     _glassBottomBar = prefs?.getBool(kPrefsGlassBottomBar) ?? true;
     _uiScale = (prefs?.getDouble(kPrefsUiScale) ?? 1).clamp(
@@ -535,9 +537,9 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
       _permissionsAskedLoaded = _loadPermissionsAsked();
     }
     WidgetsBinding.instance.addObserver(this);
-    _linkController.addListener(_onLinkChanged);
+    linkController.addListener(_onLinkChanged);
     // 冷启动就先把到反代的连接建起来:用户很可能几秒内就粘链接解析。
-    _parseService.warmUp();
+    parseService.warmUp();
 
     // 版本号是异步问出来的,不等它:第一帧该出什么还出什么。
     PackageInfo.fromPlatform()
@@ -571,12 +573,12 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     // main() 里已经预读过就直接用;没预读(测试)才异步补一次。
     final preloaded = widget.entries;
     if (preloaded != null) {
-      _historyEntries = preloaded;
+      historyEntries = preloaded;
       _warmHistoryCovers(preloaded);
     } else {
       _history.load().then((entries) {
         if (!mounted) return;
-        setState(() => _historyEntries = entries);
+        setState(() => historyEntries = entries);
         _warmHistoryCovers(entries);
       });
     }
@@ -616,8 +618,8 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     _clipboardDeadline?.cancel();
     _clipboardDeadline = null;
     _finishClipboardRead();
-    _linkController.dispose();
-    _parseService.dispose();
+    linkController.dispose();
+    parseService.dispose();
     _updates.dispose();
     super.dispose();
   }
@@ -655,13 +657,13 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
 
       if (release == null) {
         if (manual && popup != null && popup.mounted) {
-          _showInfo(popup, '检查更新', '仓库里还没有发布任何版本。');
+          showInfo(popup, '检查更新', '仓库里还没有发布任何版本。');
         }
         return;
       }
       if (!isNewerVersion(release.version, _localVersion)) {
         if (manual && popup != null && popup.mounted) {
-          _showInfo(popup, '检查更新', '当前已是最新版本($_localVersion)。');
+          showInfo(popup, '检查更新', '当前已是最新版本($_localVersion)。');
         }
         return;
       }
@@ -683,12 +685,12 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     } on UpdateException catch (error) {
       final popup = _popupContext;
       if (manual && popup != null && popup.mounted) {
-        _showInfo(popup, '检查更新失败', error.message);
+        showInfo(popup, '检查更新失败', error.message);
       }
     } catch (error) {
       final popup = _popupContext;
       if (manual && popup != null && popup.mounted) {
-        _showInfo(popup, '检查更新失败', '$error');
+        showInfo(popup, '检查更新失败', '$error');
       }
     } finally {
       if (mounted) setState(() => _checkingUpdate = false);
@@ -869,7 +871,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     } catch (error) {
       final popup = _popupContext;
       if (popup != null && popup.mounted) {
-        _showInfo(popup, '安装没能开始', '$error');
+        showInfo(popup, '安装没能开始', '$error');
       }
     }
   }
@@ -894,7 +896,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     }
     final popup = _popupContext;
     if (popup != null && popup.mounted) {
-      _showInfo(popup, '还差一步', '请在系统设置里允许「即存」安装应用,回来就会自动安装。');
+      showInfo(popup, '还差一步', '请在系统设置里允许「即存」安装应用,回来就会自动安装。');
     }
   }
 
@@ -921,9 +923,9 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   Widget build(BuildContext context) {
     // 主题模式:跟随系统时用平台亮度,_brightness 由 didChangePlatformBrightness 保持最新
     final brightness = switch (_themeMode) {
-      _ThemeMode.system => _brightness,
-      _ThemeMode.light => Brightness.light,
-      _ThemeMode.dark => Brightness.dark,
+      AppThemeMode.system => _brightness,
+      AppThemeMode.light => Brightness.light,
+      AppThemeMode.dark => Brightness.dark,
     };
     final isDark = brightness == Brightness.dark;
     return CupertinoApp(
@@ -1097,8 +1099,8 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     // 框架判定为「没变」而整棵跳过)。而切板块只推 _tabIndex,这个函数不会重跑,
     // builder 闭包里抓到的还是同一批实例,框架照样跳过三页的重建 —— 两件事都要。
     final pages = <Widget>[
-      _ParsePage(app: this),
-      _HistoryPage(app: this),
+      ParsePage(app: this),
+      HistoryPage(app: this),
       _SettingsPage(app: this),
     ];
     return ValueListenableBuilder<int>(
@@ -1232,794 +1234,19 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   }
 }
 
-/// 「解析」首页:一张窄的粘贴卡 + 若干张预览卡,单列排布。
-/// 卡片样式与间距全部沿用一级设置列表(_GlassPanel / 20 边距 / 12 间距),
-/// 只有内容不同 —— 首页比设置页多一块「预览区 + 底部动作按钮」。
-///
-/// 预览卡默认**不显示**:没解析出东西之前,它们只是几块空骨架,摆在那里既没
-/// 信息也占满一屏。只有解析成功后它们才逐张入场(见 [StaggerIn]),
-/// 而且只显示这次真解析出来的内容(见 [_PreviewKind.forResult])。
-///
-/// 状态全部挂在 [_LiquidGlassDemoState] 上,这里只是把那份状态画出来 ——
-/// 状态留在本页自己的 State 里的话,切一次 tab 就被丢掉了。
-class _ParsePage extends StatelessWidget {
-  const _ParsePage({required this.app});
-
-  final _LiquidGlassDemoState app;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final parsed = app._parseResult;
-    // 有什么才显示什么:纯视频链接底下不该挂一张空的「图集预览」。
-    final kinds = parsed == null
-        ? _PreviewKind.values
-        : _PreviewKind.forResult(parsed);
-    final showPreviews = parsed != null && kinds.isNotEmpty;
-    return ListView(
-      physics: const ShortBounceScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, _kBoardHeaderTop, 20, 120),
-      children: [
-        const _BoardHeader(title: '解析'),
-        const SizedBox(height: 18),
-        _PasteLinkCard(app: app),
-        if (app._parseError != null) ...[
-          const SizedBox(height: 10),
-          _ErrorNotice(message: app._parseError!, isDark: isDark),
-        ],
-        // 入场分两层:外层 [Reveal] 把列表高度撑开(带系统主题卡那套回弹),
-        // 内层每张卡各自淡入上浮、错开一拍。所以不是「啪」一下弹出来。
-        Reveal(
-          expanded: showPreviews,
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              ...kinds.asMap().entries.map(
-                (entry) => Padding(
-                  padding: EdgeInsets.only(
-                    bottom: entry.key == kinds.length - 1 ? 0 : 12,
-                  ),
-                  child: StaggerIn(
-                    index: entry.key,
-                    show: showPreviews,
-                    child: _PreviewCard(
-                      // 带上 kind 做 key:重新解析后同一位置上可能是另一种卡,
-                      // 不换 key 的话 State 会被复用,开合状态会串到新卡上。
-                      key: ValueKey<_PreviewKind>(entry.value),
-                      kind: entry.value,
-                      result: parsed,
-                      app: app,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 解析失败的提示条。
-///
-/// 挂在粘贴卡下面,不占预览区的位置 —— 预览区里可能还留着上一次的结果。
-class _ErrorNotice extends StatelessWidget {
-  const _ErrorNotice({required this.message, required this.isDark});
-
-  final String message;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isDark ? const Color(0xFFFF7B72) : const Color(0xFFC0392B);
-    return _GlassPanel(
-      isDark: isDark,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(
-          children: [
-            Icon(CupertinoIcons.exclamationmark_circle, size: 18, color: color),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(color: color, fontSize: 13.5, height: 1.3),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 标题行高度:三个板块统一 32。
-///
-/// 为什么定死:历史板块右上角挂着「选择 / 删除」两颗按钮(整颗 32 高)。如果让标题
-/// 和它们一起参与布局、按默认居中,标题就被按钮撑高的那一行挤下去 —— 真机实测
-/// 比解析板块低 25 设备px,切板块时一眼就看出来。行高定死之后,右侧有没有按钮、
-/// 按钮多高,都不再影响标题的位置。
-const double _kBoardHeaderHeight = 32;
-
-/// 标题行的顶边距。
-///
-/// 原来是 24,但那是对着一颗裸 Text 量的。标题现在在 32 高的行里居中,会往下走
-/// (32 - 标题文字盒高) / 2 ≈ 6,所以顶边距减掉同样的 6 —— 标题墨迹位置保持和
-/// 改动前「解析」那颗裸 Text 一致(真机实测 232 设备px)。
-const double _kBoardHeaderTop = 18;
-
-/// 板块左上角那行标题:标题 + 可选的右侧按钮。三个板块共用,高度才统一。
-///
-/// 右侧那组按钮用 FittedBox 兜底:历史板块现在有三颗(选择/全选/删除),
-/// 窄屏上放不下会整行溢出(flex 溢出会画黄黑条),放不下时按比例缩一点比溢出差。
-class _BoardHeader extends StatelessWidget {
-  const _BoardHeader({required this.title, this.trailing});
-
-  final String title;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: _kBoardHeaderHeight,
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-          ),
-          if (trailing != null)
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: trailing,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 历史板块:一列解析记录卡。卡片样式与间距沿用首页/设置页(_GlassPanel / 20 边距 /
-/// 12 间距),左边是封面,右上角横排「选择 / 全选 / 删除」。
-///
-/// 记录**不在本页读取**:数据由 [_LiquidGlassDemoState] 持有并在启动时预读好,
-/// 这里只是画出来。本页的 State 一切走就被丢掉了,数据放这儿会每次重新读盘 ——
-/// 冷启动进历史页那一下空白就是这么来的。
-///
-/// 选择模式是纯界面状态:切走 tab 就回到未选择状态。
-///
-/// 非选择模式下单击一张卡 = 带着那条链接回解析页重新解析
-/// (走 [_LiquidGlassDemoState._reparseFromHistory])。
-class _HistoryPage extends StatefulWidget {
-  const _HistoryPage({required this.app});
-
-  final _LiquidGlassDemoState app;
-
-  @override
-  State<_HistoryPage> createState() => _HistoryPageState();
-}
-
-class _HistoryPageState extends State<_HistoryPage> {
-  /// 是否处于选择模式。只在选择模式下卡片左端才长出勾选圈。
-  bool _selecting = false;
-
-  /// 已选中的记录 id。多选,所以是集合而不是单个值。
-  final Set<String> _selected = <String>{};
-
-  void _toggleSelecting() {
-    setState(() {
-      _selecting = !_selecting;
-      // 退出选择模式时清空选择,免得下次进来还带着上次的勾
-      if (!_selecting) _selected.clear();
-    });
-  }
-
-  void _toggleSelected(HistoryEntry entry) {
-    if (!_selecting) return;
-    setState(() {
-      if (!_selected.remove(entry.id)) _selected.add(entry.id);
-    });
-  }
-
-  /// 当前列表是不是已经全部选中。全选框的「选中」态看它。
-  bool _allSelected(List<HistoryEntry> list) =>
-      list.isNotEmpty && _selected.length == list.length;
-
-  /// 全选 / 取消全选。
-  ///
-  /// 按需求是**切换**:已经全选中了再点一次就全部取消,而不是永远只能全选。
-  void _toggleSelectAll(List<HistoryEntry> list) {
-    setState(() {
-      if (_allSelected(list)) {
-        _selected.clear();
-      } else {
-        _selected
-          ..clear()
-          ..addAll(list.map((entry) => entry.id));
-      }
-    });
-  }
-
-  Future<void> _deleteSelected() async {
-    final ids = <String>{..._selected};
-    setState(() {
-      _selected.clear();
-      _selecting = false;
-    });
-    // 落盘和刷新都由根 State 做 —— 列表在它那儿
-    await widget.app._deleteHistory(ids);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final secondary = settingsPalette(isDark).secondary;
-    // 列表在根 State 上,这里只读
-    final entries = widget.app._historyEntries;
-    final list = entries ?? const <HistoryEntry>[];
-    return ListView(
-      physics: const ShortBounceScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, _kBoardHeaderTop, 20, 120),
-      children: [
-        _BoardHeader(
-          title: '历史',
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PillAction(
-                asset: historyIcon(context, '选择.svg'),
-                label: '选择',
-                active: _selecting,
-                // 没有记录可挑时按钮是灰的
-                onTap: list.isEmpty ? null : _toggleSelecting,
-              ),
-              const SizedBox(width: 8),
-              _PillAction(
-                asset: historyIcon(context, '全选.svg'),
-                label: '全选',
-                // 只有进了选择模式,全选才有意义 —— 没进之前是灰的。
-                // 进了之后点一次全选中,再点一次全部取消(选中态看 _allSelected)。
-                onTap: _selecting && list.isNotEmpty
-                    ? () => _toggleSelectAll(list)
-                    : null,
-                active: _selecting && _allSelected(list),
-              ),
-              const SizedBox(width: 8),
-              _PillAction(
-                asset: historyIcon(context, '删除.svg'),
-                label: '删除',
-                destructive: true,
-                // 一个都没选就删不了
-                onTap: _selected.isEmpty ? null : _deleteSelected,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        if (list.isEmpty)
-          _GlassPanel(
-            isDark: isDark,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 30),
-              child: Center(
-                child: Text(
-                  entries == null ? '正在读取…' : '暂无解析记录',
-                  style: TextStyle(color: secondary, fontSize: 14),
-                ),
-              ),
-            ),
-          )
-        else
-          ...list.asMap().entries.map(
-            (entry) => Padding(
-              padding: EdgeInsets.only(
-                bottom: entry.key == list.length - 1 ? 0 : 12,
-              ),
-              child: _HistoryCard(
-                entry: entry.value,
-                isDark: isDark,
-                selecting: _selecting,
-                selected: _selected.contains(entry.value.id),
-                // 非选择模式:单击回解析页重新解析这条链接。
-                // 选择模式:单击只是勾选/取消勾选。
-                onTap: _selecting
-                    ? () => _toggleSelected(entry.value)
-                    : () => widget.app._reparseFromHistory(entry.value),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// 历史卡的副标题:第一行「时间 · 平台」,第二行「这次解析出了什么」。
-///
-/// 三段挤一行放不下(可用宽度约 15 个字),交给 Text 自动换行会断在类型列表中间
-/// (「视频/音频/」+「文案」),看着像渲染坏了。所以这里显式换行,让类型整体落下去。
-String _entrySubtitle(HistoryEntry entry) {
-  final result = entry.result;
-  final contents = <String>[
-    if (result.hasVideo) '视频',
-    if (result.hasImages) '图集',
-    if (result.hasAudio) '音频',
-    if (result.hasCopy) '文案',
-  ].join('/');
-  return <String>[
-    <String>[
-      _shortTime(entry.parsedAt),
-      if (result.platform.isNotEmpty) result.platform,
-    ].join(' · '),
-    if (contents.isNotEmpty) contents,
-  ].join('\n');
-}
-
-/// 「今天 22:52」这种短时间。副标题只有一行,塞不下完整日期时间。
-String _shortTime(DateTime time) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final days = today
-      .difference(DateTime(time.year, time.month, time.day))
-      .inDays;
-  final clock =
-      '${time.hour.toString().padLeft(2, '0')}:'
-      '${time.minute.toString().padLeft(2, '0')}';
-  if (days <= 0) return '今天 $clock';
-  if (days == 1) return '昨天 $clock';
-  return '${time.month} 月 ${time.day} 日';
-}
-
-/// 淡底 + 图标 + 文字的胶囊按钮。历史页顶栏那排「选择 / 全选 / 删除」,
-/// 和解析页「粘贴链接」卡右上角的「粘贴 / 清空」,共用这一颗。
-///
-/// 手写而不是 FilledButton:后者自带 48 的触控区,几颗并排会把标题行撑得比标题高一截。
-/// 配色沿用首页那些次级按钮(淡底 + 强调色);[destructive] 的红只给「删除」这种。
-class _PillAction extends StatelessWidget {
-  const _PillAction({
-    super.key,
-    required this.asset,
-    required this.label,
-    required this.onTap,
-    this.active = false,
-    this.destructive = false,
-  });
-
-  /// 已经解析好的资源路径(用 [historyIcon] / [homeIcon] 拼)。
-  final String asset;
-  final String label;
-  final VoidCallback? onTap;
-
-  /// 选择模式开着时高亮这颗按钮。
-  final bool active;
-
-  /// 删除键用红字,和普通动作分开。
-  final bool destructive;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final enabled = onTap != null;
-    final Color color = destructive
-        ? (isDark ? const Color(0xFFFF7B72) : const Color(0xFFC0392B))
-        : (isDark ? const Color(0xFF5AA9FF) : const Color(0xFF1257C9));
-    final Color foreground = enabled
-        ? color
-        : settingsPalette(isDark).secondary.withValues(alpha: 0.45);
-    // 这两颗按钮不在玻璃卡里,得自己当 Material 宿主 —— _PlainTap 是 InkWell,
-    // 找不到 Material 祖先会直接断言失败。
-    return Material(
-      type: MaterialType.transparency,
-      child: _PlainTap(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          decoration: BoxDecoration(
-            color: active
-                ? color.withValues(alpha: isDark ? 0.26 : 0.14)
-                : (isDark ? const Color(0x1FFFFFFF) : const Color(0x14000000)),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Row(
-            children: [
-              TintedSvgIcon(asset, size: 18, color: foreground),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 一条记录卡:勾选圈(仅选择模式)+ 封面 + 标题副标题。
-class _HistoryCard extends StatelessWidget {
-  const _HistoryCard({
-    required this.entry,
-    required this.isDark,
-    required this.selecting,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final HistoryEntry entry;
-  final bool isDark;
-  final bool selecting;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final result = entry.result;
-    return _GlassPanel(
-      isDark: isDark,
-      child: _PlainTap(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              _SelectDot(
-                visible: selecting,
-                selected: selected,
-                isDark: isDark,
-              ),
-              _CoverSlot(isDark: isDark, coverUrl: result.coverUrl),
-              const SizedBox(width: 14),
-              Expanded(
-                // 右侧文字区锁成「标题两行 + 副标题两行」的高度。
-                // 不锁的话标题占一行还是两行会把卡片撑成两种高度,列表参差不齐。
-                // 高度由 CardHeadline 自己的字号行高算出来,不写死数字。
-                child: SizedBox(
-                  height: CardHeadline.fourLineHeight,
-                  child: CardHeadline(
-                    isDark: isDark,
-                    // 标题为空的情况少见(接口会用正文兜底),但真出现时
-                    // 留一张没有名字的卡比留个空字符串好。
-                    title: result.title.isEmpty ? '未命名' : result.title,
-                    subtitle: _entrySubtitle(entry),
-                    // 时间 · 平台 · 类型,一行放不下
-                    subtitleMaxLines: 2,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 卡片左端那个勾选圈。只在选择模式下出现 —— 出现/消失走和卡片展开同一套曲线,
-/// 靠宽度伸缩(和 [Reveal] 是一个路子,只是方向横过来)。
-class _SelectDot extends StatelessWidget {
-  const _SelectDot({
-    required this.visible,
-    required this.selected,
-    required this.isDark,
-  });
-
-  final bool visible;
-  final bool selected;
-  final bool isDark;
-
-  static const double _size = 22;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = isDark ? const Color(0xFF5AA9FF) : const Color(0xFF1257C9);
-    final secondary = settingsPalette(isDark).secondary;
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0, end: visible ? 1 : 0),
-      duration: visible ? kRevealExpand : kRevealCollapse,
-      curve: visible ? kRevealExpandCurve : kRevealCollapseCurve,
-      builder: (context, t, child) => ClipRect(
-        child: Align(
-          alignment: Alignment.centerLeft,
-          widthFactor: t < 0 ? 0 : t,
-          child: child,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: Container(
-          width: _size,
-          height: _size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            // 空心 → 选中后填色 + 白勾
-            color: selected ? accent : const Color(0x00000000),
-            border: Border.all(
-              color: selected
-                  ? accent
-                  : secondary.withValues(alpha: selected ? 1 : 0.55),
-              width: 1.6,
-            ),
-          ),
-          child: selected
-              ? const Icon(
-                  CupertinoIcons.check_mark,
-                  size: 14,
-                  color: Color(0xFFFFFFFF),
-                )
-              : null,
-        ),
-      ),
-    );
-  }
-}
-
-/// 封面位。
-///
-/// 底下那层占位**一直在**,图下来了再淡入盖上去。
-/// 之前是「有地址就直接画 Image」——图没下来之前那块位置是空的,只有一层灰底,
-/// 看着就是"灰块 → 图片"硬切一下,很割裂。
-///
-/// 优先用磁盘缓存的本地文件:这是「重启 App 直接进历史页也能立刻看到封面」的关键。
-/// 内存缓存救不了冷启动,只有落盘才行。
-class _CoverSlot extends StatelessWidget {
-  const _CoverSlot({required this.isDark, this.coverUrl});
-
-  static const double width = 96;
-  static const double height = 60;
-
-  final bool isDark;
-  final String? coverUrl;
-
-  /// 有本地文件就从文件解码(快,不走网络);没有才联网并淡入。
-  ///
-  /// [cacheWidth] 是关键:存下来的是原图(封面动辄上千像素),而这里只显示 96 宽。
-  /// 不告诉解码器目标尺寸的话,它会老老实实解一张全尺寸位图再缩 —— 那点时间
-  /// 就是冷启动进历史页看到的那一下空白。给了解码器就能直接降采样。
-  Widget _cover(String url, int cacheWidth) {
-    final file = CoverCache.fileFor(url);
-    if (file != null) {
-      return Image.file(
-        file,
-        fit: BoxFit.cover,
-        cacheWidth: cacheWidth,
-        // 判断存在之后到真正解码之间,系统可能把缓存目录回收了 —— 退回占位
-        errorBuilder: (_, _, _) => const SizedBox.shrink(),
-      );
-    }
-    return Image.network(
-      url,
-      fit: BoxFit.cover,
-      cacheWidth: cacheWidth,
-      // 已经有帧了就淡入。同步命中内存缓存(wasSynchronouslyLoaded)时不用淡
-      // —— 那时候本来就该直接是图,淡一下反而闪。
-      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-        if (wasSynchronouslyLoaded) return child;
-        return AnimatedOpacity(
-          opacity: frame == null ? 0 : 1,
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOut,
-          child: child,
-        );
-      },
-      // 上游给的封面是带签名的临时地址,过一段时间会 403。
-      // 历史记录会长期留着,所以出错时让底下那层占位露出来就行。
-      errorBuilder: (_, _, _) => const SizedBox.shrink(),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final secondary = settingsPalette(isDark).secondary;
-    final url = coverUrl;
-    // 按屏幕物理像素给解码尺寸:别解一张全尺寸图再缩
-    final cacheWidth = (width * MediaQuery.devicePixelRatioOf(context)).round();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: ColoredBox(
-          color: isDark ? const Color(0x1FFFFFFF) : const Color(0x12000000),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Center(
-                child: Icon(
-                  CupertinoIcons.play_circle_fill,
-                  size: 24,
-                  color: secondary.withValues(alpha: 0.45),
-                ),
-              ),
-              if (url != null) _cover(url, cacheWidth),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 粘贴链接卡:刻意比预览卡矮 —— 一行说明 + 一个输入框 + 一颗按钮。
-///
-/// 输入框必须有:解析的入口是「手上有链接」,只给粘贴按钮的话,改一个字符就得去
-/// 别处重来。这里留一个可编辑的框,粘贴走系统长按菜单,清除走自带按钮。
-///
-/// 输入框控制器和解析状态都在 [_LiquidGlassDemoState] 上,这张卡本身无状态 ——
-/// 否则切一次 tab 输入框就空了。
-class _PasteLinkCard extends StatelessWidget {
-  const _PasteLinkCard({required this.app});
-
-  final _LiquidGlassDemoState app;
-
-  void _start() {
-    // 收键盘:解析结果就在这张卡下面,键盘立着会把它挡掉
-    FocusManager.instance.primaryFocus?.unfocus();
-    app._startParse(app._linkController.text);
-  }
-
-  /// 粘贴:把剪贴板里的内容整条塞进输入框。
-  ///
-  /// 不挑内容、也不看输入框里有没有东西 —— 用户点了就是要「把剪贴板给我」。
-  /// 复制的是整段分享文本也没关系:里面那条链接由 [_onLinkChanged] 顺手挑出来。
-  ///
-  /// 读不到(系统拦下、或剪贴板本来就是空的)要说一句:点了毫无反应等于坏掉。
-  Future<void> _paste(BuildContext context) async {
-    final text = await app._readClipboard();
-    if (!context.mounted) return;
-    if (text == null || text.trim().isEmpty) {
-      _showInfo(
-        context,
-        '没读到剪贴板里的文字',
-        '如果刚才确实复制了:安卓在你切走应用之后可能已经把剪贴板清掉了,'
-            '回原应用重新复制一次,再回来点粘贴。',
-      );
-      return;
-    }
-    // 换了新内容:把「完成解析」放回「开始解析」,否则新粘进来的链接点不动
-    app._unlockParse();
-    // 顺手预热连接:粘完多半就要点解析了
-    app._parseService.warmUp();
-    app._linkController.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
-
-  /// 清空输入框。解锁「完成解析」由 [_onLinkChanged] 的置空分支负责。
-  void _clear() => app._linkController.clear();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final (foreground: foreground, secondary: secondary) = settingsPalette(
-      isDark,
-    );
-    final bool hasLink = app._linkController.text.trim().isNotEmpty;
-
-    // 解析成功后按钮变成「完成解析」并置灰,直到用户点输入框或清空内容。
-    final String label;
-    final bool canStart;
-    if (app._parseLocked) {
-      label = '完成解析';
-      canStart = false;
-    } else if (app._parsing) {
-      label = '解析中…';
-      canStart = false;
-    } else {
-      label = '开始解析';
-      canStart = hasLink;
-    }
-
-    return _GlassPanel(
-      isDark: isDark,
-      child: Padding(
-        // 与设置卡同一条内边距(16/13),所以两页的卡片起止线是对齐的
-        padding: const EdgeInsets.fromLTRB(16, 13, 16, 16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                GlassIconChip(
-                  isDark: isDark,
-                  asset: homeIcon(context, '粘贴链接.svg'),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: CardHeadline(
-                    isDark: isDark,
-                    title: '粘贴链接',
-                    subtitle: '粘贴平台分享链接',
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // 右上角这两颗,样式抄历史页顶栏那排:粘贴在上、清空在下,
-                // 都靠右对齐(Column 的 end),右边那条线才是齐的。
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _PillAction(
-                      key: const ValueKey('pasteLink.paste'),
-                      asset: homeIcon(context, '粘贴.svg'),
-                      label: '粘贴',
-                      onTap: () => _paste(context),
-                    ),
-                    const SizedBox(height: 6),
-                    _PillAction(
-                      key: const ValueKey('pasteLink.clear'),
-                      asset: homeIcon(context, '清空.svg'),
-                      label: '清空',
-                      // 没内容就没得清:灰着,且吃掉点击
-                      onTap: hasLink ? _clear : null,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            CupertinoTextField(
-              controller: app._linkController,
-              placeholder: '粘贴或输入分享链接',
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              style: TextStyle(color: foreground, fontSize: 15),
-              placeholderStyle: TextStyle(color: secondary, fontSize: 15),
-              // 输入框和预览区用同一档底色:首页里三块「内容区」是一个视觉层级
-              decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0x1FFFFFFF)
-                    : const Color(0x12000000),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              // 点一下输入框就把「完成解析」放回「开始解析」——
-              // 用户既然又碰了输入框,说明他还想再解析一次。
-              // 顺手预热连接:他接着要粘贴、再点按钮,握手别等到那时候才开始。
-              onTap: () {
-                app._parseService.warmUp();
-                app._unlockParse();
-              },
-              // 自带的叉关掉:右上角已经有专门的「清空」,两个一起出现太吵
-              clearButtonMode: OverlayVisibilityMode.never,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(44),
-              ),
-              // 空链接解析不出东西,按钮先灰着,省得点了没反应;
-              // 解析中和已完成的置灰见上面的 label/canStart。
-              onPressed: canStart ? _start : null,
-              // 图标颜色不写死:交给 FilledButton 注入的 IconTheme,
-              // 深浅两套 ColorScheme 的前景色(含 M3 深色模式的深蓝 onPrimary)都跟得上。
-              icon: TintedSvgIcon(homeIcon(context, '开始解析.svg'), size: 20),
-              label: Text(label),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// 预览卡的差异只有标题、图标、中间那块预览区和底部那颗动作按钮,其余全同,
 /// 所以做成一份。动作按钮跟着内容走:画面、声音、图集、混合是「下载媒体」,
 /// 文字是「复制文案」。
 ///
 /// 具体显示哪几张由 [forResult] 按解析结果决定,不是全部画出来。
-enum _PreviewKind {
+enum PreviewKind {
   media('媒体预览', '视频画面', '媒体预览.svg', '下载媒体', '下载媒体.svg'),
   gallery('图集预览', '图片列表与缩略图', '图集预览.svg', '下载媒体', '下载媒体.svg'),
   mixed('混合预览', '视频与图片', '混合预览.svg', '下载媒体', '下载媒体.svg'),
   audio('音频预览', '音频预览与下载', '音频预览.svg', '下载媒体', '下载媒体.svg'),
   text('文案预览', '描述文案', '文案预览.svg', '复制文案', '复制文案.svg');
 
-  const _PreviewKind(
+  const PreviewKind(
     this.title,
     this.subtitle,
     this.icon,
@@ -2044,7 +1271,7 @@ enum _PreviewKind {
   /// 混合链接的内容就摆在混合卡这一条缩略图里,不用上下对着看两条。
   ///
   /// 顺序跟枚举声明一致,免得卡片跳来跳去。
-  static List<_PreviewKind> forResult(ParseResult result) => <_PreviewKind>[
+  static List<PreviewKind> forResult(ParseResult result) => <PreviewKind>[
     if (result.hasVideo && result.hasImages)
       mixed
     else ...[
@@ -2069,27 +1296,27 @@ enum _PreviewKind {
 ///
 /// 每张卡自己管开合:点标题行滑出/缩回预览区,手感与「系统主题」卡同一套曲线
 /// (见 [Reveal])。默认展开 —— 首页第一眼就该看到三块预览,而不是三个折叠条。
-class _PreviewCard extends StatefulWidget {
-  const _PreviewCard({
+class PreviewCard extends StatefulWidget {
+  const PreviewCard({
     super.key,
     required this.kind,
     required this.result,
     required this.app,
   });
 
-  final _PreviewKind kind;
+  final PreviewKind kind;
 
   /// 解析结果。null 时三块内容区都还是骨架(外层 Reveal 这时也不会展开)。
   final ParseResult? result;
 
   /// 根 State。下载结束要发系统通知,而开关在「通知管理与下载」页里、存在根 State 上。
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
 
   @override
-  State<_PreviewCard> createState() => _PreviewCardState();
+  State<PreviewCard> createState() => PreviewCardState();
 }
 
-class _PreviewCardState extends State<_PreviewCard> {
+class PreviewCardState extends State<PreviewCard> {
   /// 初始开合状态按卡片类型定:媒体和图集默认摊开,音频和文案默认收起。
   /// 用户点过后就以他自己的选择为准。
   late bool _expanded = widget.kind.defaultExpanded;
@@ -2103,7 +1330,7 @@ class _PreviewCardState extends State<_PreviewCard> {
   bool _userToggled = false;
 
   @override
-  void didUpdateWidget(_PreviewCard oldWidget) {
+  void didUpdateWidget(PreviewCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_userToggled) _expanded = widget.kind.defaultExpanded;
   }
@@ -2120,12 +1347,12 @@ class _PreviewCardState extends State<_PreviewCard> {
   List<String> _items(ParseResult? result) {
     if (result == null) return const [];
     return switch (widget.kind) {
-      _PreviewKind.media =>
+      PreviewKind.media =>
         result.hasMultiVideo
             ? [for (final v in result.videoItems) v.url]
             : const [],
-      _PreviewKind.gallery => result.imageUrls,
-      _PreviewKind.mixed => [for (final e in _mixedMedia(result)) e.url],
+      PreviewKind.gallery => result.imageUrls,
+      PreviewKind.mixed => [for (final e in _mixedMedia(result)) e.url],
       _ => const [],
     };
   }
@@ -2193,10 +1420,10 @@ class _PreviewCardState extends State<_PreviewCard> {
     final result = widget.result;
     if (result == null) return;
 
-    if (widget.kind == _PreviewKind.text) {
+    if (widget.kind == PreviewKind.text) {
       await Clipboard.setData(ClipboardData(text: result.copyText));
       if (!mounted) return;
-      _showInfo(context, '已复制', '标题与文案已复制到剪贴板。');
+      showInfo(context, '已复制', '标题与文案已复制到剪贴板。');
       return;
     }
 
@@ -2219,7 +1446,7 @@ class _PreviewCardState extends State<_PreviewCard> {
 
     final items = _itemsToDownload(result, qualityUrl: qualityUrl);
     if (items.isEmpty) {
-      _showInfo(context, '没有可下载的内容', '先选中要下载的媒体。');
+      showInfo(context, '没有可下载的内容', '先选中要下载的媒体。');
       return;
     }
     // 开始下载就把正在播的预览停掉:视频和音频都在播的时候,下载会和它们抢
@@ -2237,11 +1464,11 @@ class _PreviewCardState extends State<_PreviewCard> {
   /// 音频卡走的是 [ParseResult.audioSource](接口单独给的那份音轨),也不是视频,
   /// 同样不弹。
   List<VideoQuality> _qualityChoice(ParseResult result) {
-    if (widget.kind == _PreviewKind.audio) return const [];
+    if (widget.kind == PreviewKind.audio) return const [];
     final video = result.primaryVideo;
     if (video == null || !video.hasQualityChoice) return const [];
     // 媒体卡的多视频:选中的必须就是第一条主视频。
-    if (widget.kind == _PreviewKind.media && result.hasMultiVideo) {
+    if (widget.kind == PreviewKind.media && result.hasMultiVideo) {
       final picked = _selectedUrls;
       if (picked.length != 1 || picked.first != result.primaryVideoUrl) {
         return const [];
@@ -2310,12 +1537,12 @@ class _PreviewCardState extends State<_PreviewCard> {
     }
 
     return switch (widget.kind) {
-      _PreviewKind.gallery => () {
+      PreviewKind.gallery => () {
         final urls = result.imageUrls;
         final picked = _needsSelection(result) ? _selectedUrls : urls;
         return pack(picked, (_) => MediaKind.image);
       }(),
-      _PreviewKind.mixed => () {
+      PreviewKind.mixed => () {
         // 下载地址与缩略图网格同序,但视频那格是视频地址而不是封面(见 [_mixedMedia])
         final entries = _mixedMedia(result);
         // 两条以上要先选:一条视频 + 一张图也算两条,一样要走选中
@@ -2330,7 +1557,7 @@ class _PreviewCardState extends State<_PreviewCard> {
         ], (i) => picked[i].isVideo ? MediaKind.video : MediaKind.image);
       }(),
       // 媒体的多视频卡走缩略图选中
-      _PreviewKind.media when result.hasMultiVideo => pack(
+      PreviewKind.media when result.hasMultiVideo => pack(
         _selectedUrls,
         (_) => MediaKind.video,
       ),
@@ -2338,7 +1565,7 @@ class _PreviewCardState extends State<_PreviewCard> {
       // (audio_url),不是整个视频 —— 后台里那份是现成的,没必要下一整个 MP4。
       // 视频那一路用 primaryVideoUrl:实况帖的 video_url 是 null,地址在实况里。
       _ => () {
-        final isAudio = widget.kind == _PreviewKind.audio;
+        final isAudio = widget.kind == PreviewKind.audio;
         // 视频那一路:用户在清晰度弹窗里选过就用他选的那档,否则用 primaryVideoUrl
         // (实况帖的 video_url 是 null,地址在实况里)。音频卡不吃 qualityUrl ——
         // 那档是视频的码流,下音频时不弹窗,这里也不会传进来。
@@ -2410,7 +1637,7 @@ class _PreviewCardState extends State<_PreviewCard> {
   /// 音频卡按音源改口:放接口给的那份独立音频时是「试听提取出的音频」;
   /// 只有接口没给 audio_url、退回视频本身时才叫「视频原声」。
   String _subtitle(ParseResult? result) {
-    if (widget.kind == _PreviewKind.audio && result != null) {
+    if (widget.kind == PreviewKind.audio && result != null) {
       return result.hasStandaloneAudio ? widget.kind.subtitle : '视频原声';
     }
     return widget.kind.subtitle;
@@ -2423,12 +1650,12 @@ class _PreviewCardState extends State<_PreviewCard> {
     // 解析结果换了就把选中清掉(同一条链接内点选不受影响)
     _syncItems(_items(widget.result));
     final selectable = _needsSelection(widget.result);
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PlainTap(
+          PlainTap(
             onTap: () => setState(() {
               _userToggled = true;
               _expanded = !_expanded;
@@ -2534,13 +1761,13 @@ class _PreviewStage extends StatelessWidget {
     required this.onTapTile,
   });
 
-  final _PreviewKind kind;
+  final PreviewKind kind;
   final bool isDark;
 
   /// 解析结果。null 时三块内容区都还是骨架。
   final ParseResult? result;
 
-  /// 缩略图条里已选中的下标。跟着 [_PreviewCardState] 走。
+  /// 缩略图条里已选中的下标。跟着 [PreviewCardState] 走。
   final Set<int> selected;
   final ValueChanged<int> onTapTile;
 
@@ -2557,7 +1784,7 @@ class _PreviewStage extends StatelessWidget {
       // 视频画面:一条视频是真正的播放器(见 [_VideoStage]),两条以上就是
       // 横向封面缩略图 —— 需求里多视频与多图走同一套排版,播放组件取消掉。
       // 封面用接口给的:那是这一条自己的首帧图;接口没给就退化成播放占位图标。
-      _PreviewKind.media =>
+      PreviewKind.media =>
         parsed != null && parsed.hasMultiVideo
             ? _GalleryStage(
                 isDark: isDark,
@@ -2580,13 +1807,13 @@ class _PreviewStage extends StatelessWidget {
                 coverUrl: parsed?.primaryVideoCoverUrl,
               ),
       // 音频:一块能按的播放器。见 [_AudioStage] —— 不是波形图。
-      _PreviewKind.audio => _AudioStage(
+      PreviewKind.audio => _AudioStage(
         isDark: isDark,
         url: parsed?.audioSource ?? '',
       ),
-      // 图集:横向缩略图条。两条以上要选中才能下载,见 [_PreviewCardState]。
+      // 图集:横向缩略图条。两条以上要选中才能下载,见 [PreviewCardState]。
       // 没有图集内容(纯视频链接)时给一句话,不留一块空占位让人猜是不是加载失败。
-      _PreviewKind.gallery => _GalleryStage(
+      PreviewKind.gallery => _GalleryStage(
         isDark: isDark,
         entries: [
           for (final url in parsed?.imageUrls ?? const <String>[])
@@ -2599,7 +1826,7 @@ class _PreviewStage extends StatelessWidget {
       ),
       // 混合:视频封面和图片排在一条缩略图里,视频那几格右下角带播放标识。
       // 数两样一起数,所以量词不写死。
-      _PreviewKind.mixed => _GalleryStage(
+      PreviewKind.mixed => _GalleryStage(
         isDark: isDark,
         entries: parsed == null
             ? const <({String url, bool isVideo})>[]
@@ -2612,7 +1839,7 @@ class _PreviewStage extends StatelessWidget {
       // 文案卡只放描述文案。标题和作者不上卡片(副标题已经写明是「描述文案」),
       // 描述为空时这张卡根本不会被建出来(见 [forResult])。
       // 文字区最多 12 行、超过就出滚动条,见 [_CopyStage]。
-      _PreviewKind.text =>
+      PreviewKind.text =>
         parsed == null
             ? DecoratedBox(
                 decoration: BoxDecoration(
@@ -2775,7 +2002,7 @@ typedef _MediaThumb = ({String url, bool isVideo});
 
 /// 混合卡的缩略图条目:视频在前、图片在后。
 ///
-/// 顺序和 [_PreviewCardState._items] 必须一致 —— 选中状态是按这里的下标存的,
+/// 顺序和 [PreviewCardState._items] 必须一致 —— 选中状态是按这里的下标存的,
 /// 两边错了就会「点第一格选中第三格」。
 List<_MediaThumb> _galleryEntries(ParseResult result) => <_MediaThumb>[
   for (final v in result.videoItems) (url: v.coverUrl ?? '', isVideo: true),
@@ -3207,7 +2434,7 @@ class _PlaybackRow extends StatelessWidget {
 
     return Row(
       children: [
-        _PlainTap(
+        PlainTap(
           onTap: enabled ? onToggle : null,
           child: Container(
             width: 40,
@@ -3990,7 +3217,7 @@ class _DownloadProgressCardState extends State<_DownloadProgressCard> {
       return;
     }
     setState(() => _failed = true);
-    _showInfo(context, '下载没能完成', downloadErrorMessage(error));
+    showInfo(context, '下载没能完成', downloadErrorMessage(error));
   }
 
   bool get _done => _fraction >= 1 && !_failed;
@@ -5058,9 +4285,9 @@ class _PopupShell extends StatelessWidget {
               //    那条缝。
               //
               // 弹层底下本来就只有页面自己,方向键上下滚也不会跑到别的地方去,
-              // 所以直接采样即可 —— _GlassPanel 本来就没有铺底这个参数,弹层的
+              // 所以直接采样即可 —— GlassPanel 本来就没有铺底这个参数,弹层的
               // 调用方也都不自己铺垫。
-              child: _GlassPanel(
+              child: GlassPanel(
                 isDark: isDark,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 11, 14, 14),
@@ -5247,7 +4474,7 @@ Future<bool> _showGlassDialog(
 }
 
 /// 统一的轻提示。内容是 [_GlassDialog],弹层的路由与遮罩见 [_GlassDialogRoute]。
-void _showInfo(
+void showInfo(
   BuildContext context,
   String title,
   String body, {
@@ -5455,7 +4682,7 @@ class _SettingsPage extends StatelessWidget {
   const _SettingsPage({required this.app});
 
   /// 二级页要改的是应用级状态(主题、底栏),所以直接持有根 State。
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
 
   static const _options = <_SettingsOption>[
     _SettingsOption('主题与外观', '修改主题、显示效果'),
@@ -5472,9 +4699,9 @@ class _SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       physics: const ShortBounceScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, _kBoardHeaderTop, 20, 120),
+      padding: const EdgeInsets.fromLTRB(20, kBoardHeaderTop, 20, 120),
       children: [
-        const _BoardHeader(title: '设置'),
+        const BoardHeader(title: '设置'),
         const SizedBox(height: 18),
         ..._options.asMap().entries.map(
           (entry) => Padding(
@@ -5543,7 +4770,7 @@ class _SettingsPage extends StatelessWidget {
     }
 
     // 这个分支目前只有「使用帮助及反馈」到得了,但别处加一项没做二级页的设置就是它
-    _showInfo(context, title, '该设置项将在后续版本开放。');
+    showInfo(context, title, '该设置项将在后续版本开放。');
   }
 }
 
@@ -5633,7 +4860,7 @@ class _SettingsOptionCard extends StatelessWidget {
       ),
     );
 
-    return _GlassPanel(isDark: isDark, child: content);
+    return GlassPanel(isDark: isDark, child: content);
   }
 }
 
@@ -5641,7 +4868,7 @@ class _NotificationManagementPage extends StatefulWidget {
   const _NotificationManagementPage({required this.app});
 
   /// 这两个开关下载流程要用,所以和「主题与外观」一样直接持有根 State。
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
 
   @override
   State<_NotificationManagementPage> createState() =>
@@ -5652,7 +4879,7 @@ class _NotificationManagementPageState
     extends State<_NotificationManagementPage> {
   bool _isSending = false;
 
-  _LiquidGlassDemoState get app => widget.app;
+  HomeShellState get app => widget.app;
 
   /// 要一次通知权限。和首次授权卡走同一个实现,免得两处判断分家。
   Future<bool> _requestPermission() => _requestNotificationPermission();
@@ -5666,7 +4893,7 @@ class _NotificationManagementPageState
       final granted = await _requestPermission();
       if (!mounted) return;
       if (!granted) {
-        _showInfo(
+        showInfo(
           context,
           '通知权限未开启',
           '请在系统设置中允许即存发送通知。',
@@ -5690,7 +4917,7 @@ class _NotificationManagementPageState
       final granted = await _requestPermission();
       if (!mounted) return;
       if (!granted) {
-        _showInfo(
+        showInfo(
           context,
           '通知权限未开启',
           '请在系统设置中允许即存发送通知。',
@@ -5733,7 +4960,7 @@ class _NotificationManagementPageState
             physics: const ShortBounceScrollPhysics(),
             padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
             children: [
-              _GlassPanel(
+              GlassPanel(
                 isDark: isDark,
                 child: _GoogleSwitchRow(
                   isDark: isDark,
@@ -5744,7 +4971,7 @@ class _NotificationManagementPageState
                 ),
               ),
               const SizedBox(height: 12),
-              _GlassPanel(
+              GlassPanel(
                 isDark: isDark,
                 child: _GoogleSwitchRow(
                   isDark: isDark,
@@ -5775,12 +5002,12 @@ class _NotificationManagementPageState
 /// 「设置 → 自动粘贴并解析」的二级页。
 ///
 /// 只有一张开关卡,样式与「通知管理与下载」页同一套
-/// (_GlassPanel + _GoogleSwitchRow,同一张顶栏图):打开后,每次进入 APP
+/// (GlassPanel + _GoogleSwitchRow,同一张顶栏图):打开后,每次进入 APP
 /// 都会把剪贴板首条链接自动填进输入栏并解析(见 `_maybeAutoPasteParse`)。
 class _AutoPastePage extends StatelessWidget {
   const _AutoPastePage({required this.app});
 
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
 
   @override
   Widget build(BuildContext context) {
@@ -5798,7 +5025,7 @@ class _AutoPastePage extends StatelessWidget {
             physics: const ShortBounceScrollPhysics(),
             padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
             children: [
-              _GlassPanel(
+              GlassPanel(
                 isDark: isDark,
                 child: _GoogleSwitchRow(
                   isDark: isDark,
@@ -5840,7 +5067,7 @@ class _StorageLocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5974,7 +5201,7 @@ class _FeedbackChannelsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6024,12 +5251,12 @@ class _CopyableRow extends StatelessWidget {
     final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
-    return _PlainTap(
+    return PlainTap(
       onTap: () async {
         await Clipboard.setData(ClipboardData(text: value));
         if (!context.mounted) return;
         // 和「复制文案」同一个回音弹窗,全 APP 一套
-        _showInfo(context, '已复制', '$label:$value');
+        showInfo(context, '已复制', '$label:$value');
       },
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
@@ -6081,12 +5308,12 @@ class _PlatformCardState extends State<_PlatformCard> {
     final info = widget.info;
     final secondary = settingsPalette(isDark).secondary;
 
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PlainTap(
+          PlainTap(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               // 左边 18 和标题行对齐;右边 14 留给箭头自己的视觉留白
@@ -6253,7 +5480,7 @@ class _AboutAppPage extends StatelessWidget {
                         const ClipboardData(text: _kRepoUrl),
                       );
                       if (!context.mounted) return;
-                      _showInfo(context, '已复制', '开源地址已复制到剪贴板。');
+                      showInfo(context, '已复制', '开源地址已复制到剪贴板。');
                     },
                   ),
                   const SizedBox(height: 12),
@@ -6328,14 +5555,14 @@ class _AboutInfoCard extends StatelessWidget {
       style: const TextStyle(fontSize: 14.5, height: 1.35),
     );
 
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: onTap == null
           ? Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
               child: line,
             )
-          : _PlainTap(
+          : PlainTap(
               onTap: onTap,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -6439,7 +5666,7 @@ class _EggHintCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (foreground: _, secondary: secondary) = settingsPalette(isDark);
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6605,7 +5832,7 @@ class _SubPage extends StatelessWidget {
 }
 
 /// 系统主题的三个选项
-enum _ThemeMode { system, light, dark }
+enum AppThemeMode { system, light, dark }
 
 /// 「系统主题」卡:收起时只有一行(标题 + 当前值 + 向下箭头),点箭头向下滑出
 /// 三个选项;选完自己回弹收起。
@@ -6614,7 +5841,7 @@ enum _ThemeMode { system, light, dark }
 class _ThemeModeCard extends StatefulWidget {
   const _ThemeModeCard({required this.app, required this.isDark});
 
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
   final bool isDark;
 
   @override
@@ -6622,10 +5849,10 @@ class _ThemeModeCard extends StatefulWidget {
 }
 
 class _ThemeModeCardState extends State<_ThemeModeCard> {
-  static const List<(_ThemeMode, String)> _options = [
-    (_ThemeMode.system, '跟随系统'),
-    (_ThemeMode.light, '浅色'),
-    (_ThemeMode.dark, '深色'),
+  static const List<(AppThemeMode, String)> _options = [
+    (AppThemeMode.system, '跟随系统'),
+    (AppThemeMode.light, '浅色'),
+    (AppThemeMode.dark, '深色'),
   ];
 
   bool _expanded = false;
@@ -6638,12 +5865,12 @@ class _ThemeModeCardState extends State<_ThemeModeCard> {
     final isDark = widget.isDark;
     final secondary = settingsPalette(isDark).secondary;
 
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PlainTap(
+          PlainTap(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 22, 14, 22),
@@ -6669,7 +5896,7 @@ class _ThemeModeCardState extends State<_ThemeModeCard> {
             expanded: _expanded,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: RadioGroup<_ThemeMode>(
+              child: RadioGroup<AppThemeMode>(
                 groupValue: widget.app._themeMode,
                 onChanged: (mode) {
                   if (mode == null) return;
@@ -6681,7 +5908,7 @@ class _ThemeModeCardState extends State<_ThemeModeCard> {
                 child: Column(
                   children: [
                     for (final (mode, label) in _options)
-                      _GoogleChoiceRow<_ThemeMode>(
+                      _GoogleChoiceRow<AppThemeMode>(
                         isDark: isDark,
                         value: mode,
                         label: label,
@@ -6719,7 +5946,7 @@ class _SubPageRoute<T> extends CupertinoPageRoute<T> {
 class _ThemeAppearancePage extends StatelessWidget {
   const _ThemeAppearancePage({required this.app});
 
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
 
   @override
   Widget build(BuildContext context) {
@@ -6761,7 +5988,7 @@ class _ThemeAppearancePage extends StatelessWidget {
 class _BarAppearanceCard extends StatefulWidget {
   const _BarAppearanceCard({required this.app, required this.isDark});
 
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
   final bool isDark;
 
   @override
@@ -6777,12 +6004,12 @@ class _BarAppearanceCardState extends State<_BarAppearanceCard> {
     final app = widget.app;
     final secondary = settingsPalette(isDark).secondary;
 
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PlainTap(
+          PlainTap(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 22, 14, 22),
@@ -6846,7 +6073,7 @@ class _UiScaleCard extends StatefulWidget {
   static const double min = 0.8;
   static const double max = 1.3;
 
-  final _LiquidGlassDemoState app;
+  final HomeShellState app;
   final bool isDark;
 
   @override
@@ -6861,12 +6088,12 @@ class _UiScaleCardState extends State<_UiScaleCard> {
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
     final secondary = settingsPalette(isDark).secondary;
-    return _GlassPanel(
+    return GlassPanel(
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PlainTap(
+          PlainTap(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 22, 14, 22),
@@ -7029,7 +6256,7 @@ class _UiZoom extends StatelessWidget {
 
 /// 二级设置页的 Material 3 环境。
 ///
-/// 卡片本身与一级设置列表同一种毛玻璃(见 _GlassPanel),这里只负责控件配色:
+/// 卡片本身与一级设置列表同一种毛玻璃(见 GlassPanel),这里只负责控件配色:
 /// 一份 Material 3 的 ColorScheme(用品牌蓝做种子,所以强调色仍是即存的蓝,
 /// 而不是 Google 默认的紫)。下面所有开关与单选都从它取色。
 class _GoogleSurface extends StatelessWidget {
@@ -7062,8 +6289,8 @@ class _GoogleSurface extends StatelessWidget {
 /// 也刻意**不画投影**:列表里卡片间距只有 12,而投影(blur 18 / 下移 8)会越过
 /// 间隙盖到下一张卡上,深色模式下就是一整条发黑的带子把两张卡连在一起,卡片越多
 /// 越明显。卡片与背景的层次改由半透明底自己承担。
-class _GlassPanel extends StatelessWidget {
-  const _GlassPanel({required this.isDark, required this.child});
+class GlassPanel extends StatelessWidget {
+  const GlassPanel({super.key, required this.isDark, required this.child});
 
   final bool isDark;
   final Widget child;
@@ -7156,8 +6383,8 @@ class _GoogleValueRow extends StatelessWidget {
 /// Flutter 默认按下时给整行铺一层灰(highlight + splash),在玻璃卡上就是一块
 /// 边界清楚的灰矩形,看着像把卡片切成了两半 —— 所以这里全部关掉。
 /// 点了仍然有反应,只是反应交给控件本身(开关滑动、单选变蓝、卡片展开)。
-class _PlainTap extends StatelessWidget {
-  const _PlainTap({required this.onTap, required this.child});
+class PlainTap extends StatelessWidget {
+  const PlainTap({super.key, required this.onTap, required this.child});
 
   final VoidCallback? onTap;
   final Widget child;
@@ -7269,7 +6496,7 @@ class _GoogleChoiceRow<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onChanged = RadioGroup.maybeOf<T>(context)?.onChanged;
-    return _PlainTap(
+    return PlainTap(
       onTap: onChanged == null ? null : () => onChanged(value),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),

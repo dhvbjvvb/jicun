@@ -482,7 +482,7 @@ void useStubClipboardChannel(String? text) {
 
 /// 粘贴链接卡右上角那颗胶囊按钮现在能不能点。
 ///
-/// 这两颗走的是 [_PlainTap] → InkWell(和历史页那颗同款),所以看的是 InkWell.onTap。
+/// 这两颗走的是 [PlainTap] → InkWell(和历史页那颗同款),所以看的是 InkWell.onTap。
 bool _actionEnabled(WidgetTester tester, String name) =>
     tester
         .widget<InkWell>(
@@ -792,7 +792,7 @@ void main() {
       matching: find.byType(FilledButton),
     );
     if (within != null) {
-      // 每张预览卡自己是一层 Material(_GlassPanel 里那位),拿它当卡片边界。
+      // 每张预览卡自己是一层 Material(GlassPanel 里那位),拿它当卡片边界。
       finder = find.descendant(
         of: find
             .ancestor(of: find.text(within), matching: find.byType(Material))
@@ -1676,7 +1676,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('pasteLink.paste')));
-    // 读空之后会等一下再问一次(见 _readClipboard),得让假时钟走过那段时间
+    // 读空之后会等一下再问一次(见 readClipboard),得让假时钟走过那段时间
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();

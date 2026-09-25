@@ -1339,7 +1339,8 @@ enum ParsePlatform {
 
   const ParsePlatform(this.label);
 
-  /// 展示用的中文名。历史卡上「平台」那一栏就是它(见 main.dart 的 _entrySubtitle)。
+  /// 展示用的中文名。历史卡上「平台」那一栏就是它(见 lib/pages/history.dart
+  /// 的 entrySubtitle)。
   final String label;
 }
 
