@@ -28,6 +28,12 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
+      # gradlew / gradle-wrapper.jar / local.properties 都不进版本库(Flutter 模板的
+      # android/.gitignore 忽略了它们),干净检出里一个都没有 —— 直接跑 ./gradlew 会
+      # 报 "No such file or directory"。先让它跑一次 Android 构建,把这些补齐,
+      # 顺带把 Kotlin 编译这道门也过了。
+      - run: flutter build apk --debug
+
       # Native side: pure-function tests over DownloadNames / LaunchActivities / NativeDownloader.
       - run: ./gradlew :app:testDebugUnitTest
         working-directory: android
