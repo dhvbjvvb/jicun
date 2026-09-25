@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -20,7 +20,8 @@ import 'downloader.dart';
 /// 结果打在 logcat 的 flutter tag 上(`[bench]` 前缀)。
 ///
 /// ponytail: 只给排障用,不做界面、不做持久化。用完这个文件可以整个删掉,
-/// main.dart 里就一处 initBench() 的调用。
+/// main.dart 里就只有一处 `DownloadBench.checkIntent()` 的调用(启动时,且只在
+/// debug 构建里)。
 class DownloadBench {
   const DownloadBench._();
 

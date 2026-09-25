@@ -324,7 +324,8 @@ class VideoItem {
   /// 这一条视频可选的清晰度档位,已经去过重、排好序(见 [dedupeQualities])。
   ///
   /// **只有第二个上游给得出**,media-parser 永远是空列表。空或只有一档时不该弹
-  /// 分辨率选择窗 —— 没有第二个选项的弹窗只是多一次点击(见 main.dart)。
+  /// 分辨率选择窗 —— 没有第二个选项的弹窗只是多一次点击(见 lib/ui/popup.dart
+  /// 的 showQualityPicker)。
   final List<VideoQuality> qualities;
 
   /// 能不能让用户选分辨率。两档以上才有得选。

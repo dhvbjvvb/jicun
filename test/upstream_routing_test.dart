@@ -626,7 +626,7 @@ void main() {
       });
       expect(result.primaryVideo!.qualities.single.label, '');
       expect(result.primaryVideo!.qualities.single.bitrate, 2500000);
-      // 只有一档:不弹窗(见 main.dart 的 _qualityChoice)
+      // 只有一档:不弹窗(见 lib/pages/preview.dart 的 _qualityChoice)
       expect(result.primaryVideo!.hasQualityChoice, isFalse);
     });
 
