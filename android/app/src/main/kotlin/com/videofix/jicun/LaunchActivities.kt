@@ -1,4 +1,4 @@
-package com.example.untitled
+package com.videofix.jicun
 
 /**
  * 两个**启动入口**:一个主题一档。

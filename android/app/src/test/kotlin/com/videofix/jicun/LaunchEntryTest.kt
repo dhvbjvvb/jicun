@@ -1,4 +1,4 @@
-package com.example.untitled
+package com.videofix.jicun
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,8 +15,8 @@ class LaunchEntryTest {
     @Test
     fun `选了深色就启用深色那个入口`() {
         assertEquals(
-            "com.example.untitled.LaunchDarkActivity",
-            launchEntryClass("com.example.untitled", dark = true),
+            "com.videofix.jicun.LaunchDarkActivity",
+            launchEntryClass("com.videofix.jicun", dark = true),
         )
         assertTrue(wantDark("dark", systemNight = false))
     }
@@ -24,8 +24,8 @@ class LaunchEntryTest {
     @Test
     fun `选了浅色就启用浅色那个入口,系统是深色也不跟`() {
         assertEquals(
-            "com.example.untitled.LaunchLightActivity",
-            launchEntryClass("com.example.untitled", dark = false),
+            "com.videofix.jicun.LaunchLightActivity",
+            launchEntryClass("com.videofix.jicun", dark = false),
         )
         assertFalse(wantDark("light", systemNight = true))
     }

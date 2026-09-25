@@ -28,7 +28,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-PKG = "com.example.untitled"
+PKG = "com.videofix.jicun"
 PREFS = f"/data/data/{PKG}/shared_prefs/FlutterSharedPreferences.xml"
 NODE = re.compile(
     r'content-desc="([^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'

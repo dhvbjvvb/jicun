@@ -171,7 +171,7 @@ class _FakePackageInfo extends PackageInfoPlatform
   @override
   Future<PackageInfoData> getAll({String? baseUrl}) async => PackageInfoData(
     appName: '即存',
-    packageName: 'com.example.untitled',
+    packageName: 'com.videofix.jicun',
     version: version,
     buildNumber: '1',
     buildSignature: '',

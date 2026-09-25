@@ -1,4 +1,4 @@
-package com.example.untitled
+package com.videofix.jicun
 
 import android.content.ClipboardManager
 import android.content.ComponentName
@@ -330,7 +330,7 @@ open class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         cacheBenchArgs(intent)
         // 下载基准的触发通道(只用于排障,见 lib/bench.dart):
-        //   adb shell am start -n com.example.untitled/.MainActivity \
+        //   adb shell am start -n com.videofix.jicun/.MainActivity \
         //     --es bench_url "<地址>" --ei bench_segments 24
         // 参数在 cacheBenchArgs 里缓存,**不直接读 intent** —— app 已经被 am start
         // 唤醒过之后,新 intent 只是递进来,那一刻读 intent 可能什么都读不到(实测

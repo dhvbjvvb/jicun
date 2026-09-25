@@ -15,9 +15,9 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-PKG = "com.example.untitled"
-ACT = f"{PKG}/com.example.untitled.MainActivity"
-PREFS = "/data/data/com.example.untitled/shared_prefs/FlutterSharedPreferences.xml"
+PKG = "com.videofix.jicun"
+ACT = f"{PKG}/com.videofix.jicun.MainActivity"
+PREFS = "/data/data/com.videofix.jicun/shared_prefs/FlutterSharedPreferences.xml"
 NODE = re.compile(r'content-desc="([^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"')
 
 

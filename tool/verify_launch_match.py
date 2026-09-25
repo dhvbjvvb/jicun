@@ -15,7 +15,7 @@ a real mismatch in the background itself, not chrome or transition state.
 
 Usage:
     python verify_launch_match.py
-    python verify_launch_match.py --package com.example.untitled --skip 2500
+    python verify_launch_match.py --package com.videofix.jicun --skip 2500
 
 Requires: adb on PATH or --adb, and Pillow (`pip install Pillow`).
 Exit code 0 = match within tolerance, 1 = mismatch, 2 = setup problem.
@@ -96,7 +96,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--adb", default="adb", help="path to adb (default: adb on PATH)")
-    p.add_argument("--package", default="com.example.untitled")
+    p.add_argument("--package", default="com.videofix.jicun")
     p.add_argument("--activity", default=None, help="default: <package>/.MainActivity")
     p.add_argument("--delay", type=float, default=1.5,
                    help="seconds after start before sampling the launch window; "

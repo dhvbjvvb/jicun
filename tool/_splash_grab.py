@@ -13,8 +13,8 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-PKG = "com.example.untitled"
-ACT = f"{PKG}/com.example.untitled.MainActivity"
+PKG = "com.videofix.jicun"
+ACT = f"{PKG}/com.videofix.jicun.MainActivity"
 
 
 def adb(*args: str) -> str:

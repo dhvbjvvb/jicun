@@ -1,4 +1,4 @@
-package com.example.untitled
+package com.videofix.jicun
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

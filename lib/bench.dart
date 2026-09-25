@@ -15,7 +15,7 @@ import 'downloader.dart';
 ///   - 这里能到 43+       → 实现在拖,接着往 `Downloader._fetchSegments` 里查。
 ///
 /// 怎么触发(debug 构建):
-///   adb shell am start -n com.example.untitled/.MainActivity \
+///   adb shell am start -n com.videofix.jicun/.MainActivity \
 ///     --es bench_url "<视频地址>" --ei bench_segments 24
 /// 结果打在 logcat 的 flutter tag 上(`[bench]` 前缀)。
 ///

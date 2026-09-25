@@ -260,7 +260,7 @@ void main() {
         .map((m) => m.group(1)!)
         .toSet();
     final inKotlin = RegExp(r'"(Launch\w+Activity)"')
-        .allMatches(read('android/app/src/main/kotlin/com/example/untitled/'
+        .allMatches(read('android/app/src/main/kotlin/com/videofix/jicun/'
             'LaunchActivities.kt'))
         .map((m) => m.group(1)!)
         .toSet();

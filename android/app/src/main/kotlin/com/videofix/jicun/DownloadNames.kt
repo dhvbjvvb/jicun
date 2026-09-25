@@ -1,4 +1,4 @@
-package com.example.untitled
+package com.videofix.jicun
 
 /**
  * 相册里那份名字的重名号。
