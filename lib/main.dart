@@ -18,6 +18,7 @@ import 'downloader.dart';
 import 'history_store.dart';
 import 'parse_service.dart';
 import 'preferred_ip.dart';
+import 'shell_controller.dart';
 import 'update_service.dart';
 import 'widgets/animated_tab_icon.dart';
 
@@ -140,7 +141,8 @@ const double _kTabSwipeDistance = 80;
 const double _kTabSwipeVelocity = 400;
 
 class HomeShellState extends State<LiquidGlassDemo>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver
+    implements ShellController {
   /// 当前板块。**不是**普通字段 + setState:底栏那一下如果走根 setState,整个
   /// CupertinoApp(连同 Navigator 和三个页面)都要重建,实测 build 尖峰 40~47ms,
   /// 120Hz 上就是掉五六帧的卡顿。改成 ValueNotifier,只重建 IndexedStack 的 index
@@ -153,18 +155,25 @@ class HomeShellState extends State<LiquidGlassDemo>
       WidgetsBinding.instance.platformDispatcher.platformBrightness;
 
   // 二级设置页(主题与外观)可改的项。初值在 initState 里从偏好存储读回。
+  @override
   late AppThemeMode themeMode;
+  @override
   late bool hideTabLabels;
+  @override
   late bool glassBottomBar;
 
   /// 界面缩放:已生效的值。(拖动中的草稿留在缩放卡片自己身上,见 UiScaleCard)
+  @override
   late double uiScale;
 
   /// 下载结束后要不要发系统通知。两个开关在「通知管理与下载」页里。
+  @override
   late bool notifyDownloadDone;
+  @override
   late bool notifyDownloadFailed;
 
   /// 进入 APP 自动粘贴剪贴板首条链接并解析。开关在「自动粘贴并解析」页里，默认开。
+  @override
   late bool autoPasteParse;
 
   /// 上一次自动粘贴解析过的链接。剪贴板没换内容时不再重复解析，
@@ -212,6 +221,7 @@ class HomeShellState extends State<LiquidGlassDemo>
   }
 
   /// 正在检查更新(设置页那颗按钮要跟着转)。
+  @override
   bool checkingUpdate = false;
 
   /// 「已忽略的版本」那次异步读。见 initState。null = 不需要读(widget.prefs 里有)。
@@ -228,25 +238,32 @@ class HomeShellState extends State<LiquidGlassDemo>
   // 刻意放在根 State 上,而不是 ParsePage 自己的 State 里:切 tab 会把整棵子树
   // 连同它的 State 一起重建,状态放在页面里的话,解析结果和输入框内容一换 tab
   // 就没了。输入框控制器同理 —— 它的内容也得活着。
+  @override
   final ParseService parseService = ParseService();
   final HistoryStore _history = HistoryStore();
+  @override
   final TextEditingController linkController = TextEditingController();
 
   /// 历史记录。同样放在根 State 上:历史页切走就会被重建,数据留在这儿才不会
   /// 每次进来都重新读一遍存储。
   ///
   /// null = 还没读到(测试里没预传、异步读还没回来)。
+  @override
   List<HistoryEntry>? historyEntries;
 
+  @override
   ParseResult? parseResult;
 
   /// 正在请求。按钮跟着置灰,避免连点打出多次解析。
+  @override
   bool parsing = false;
 
   /// 上一次失败的提示文案。成功一次就清掉。
+  @override
   String? parseError;
 
   /// 解析成功后把按钮锁成「完成解析」。点一下输入框、或清空内容才解锁。
+  @override
   bool parseLocked = false;
 
   /// 输入框上次是不是空的。用来判断「变空/变非空」这一下要不要重画
@@ -282,11 +299,13 @@ class HomeShellState extends State<LiquidGlassDemo>
   }
 
   /// 用户点了输入框。按需求,这时「完成解析」要放回「开始解析」。
+  @override
   void unlockParse() {
     if (!parseLocked) return;
     setState(() => parseLocked = false);
   }
 
+  @override
   Future<void> startParse(String link) async {
     final url = extractShareUrl(link) ?? link.trim();
     if (url.isEmpty) return;
@@ -335,6 +354,7 @@ class HomeShellState extends State<LiquidGlassDemo>
   }
 
   /// 历史卡被单击:带着那条记录的链接回解析页重新解析。
+  @override
   Future<void> reparseFromHistory(HistoryEntry entry) async {
     if (entry.sourceUrl.isEmpty) return;
     linkController.text = entry.sourceUrl;
@@ -357,6 +377,7 @@ class HomeShellState extends State<LiquidGlassDemo>
   ///
   /// 计时器和等待都由页面自己拿着(见 [_clipboardDeadline] / [_clipboardWait]):
   /// 页面销毁时两个一起收掉,不然会留下一个孤儿计时器。
+  @override
   Future<String?> readClipboard() async {
     final wait = Completer<String?>();
     _clipboardDeadline?.cancel();
@@ -410,6 +431,7 @@ class HomeShellState extends State<LiquidGlassDemo>
 
   /// 下载结束后的系统通知。发不出去(没权限、系统静音)就算了 ——
   /// 通知只是锦上添花,不能反过来影响下载本身。
+  @override
   Future<void> notifyDownloadFinished({
     required bool ok,
     required String title,
@@ -435,6 +457,7 @@ class HomeShellState extends State<LiquidGlassDemo>
   }
 
   /// 历史页删记录。数据在根 State 上,所以得由这里落盘并刷新。
+  @override
   Future<void> deleteHistory(Set<String> ids) async {
     final entries = await _history.remove(ids);
     if (!mounted) return;
@@ -443,6 +466,7 @@ class HomeShellState extends State<LiquidGlassDemo>
 
   /// 供二级设置页调用。setState 是 protected,不能从外部 State 直接调,
   /// 所以在这里开一个公开入口统一刷新,顺带把改动落盘。
+  @override
   void applySetting(VoidCallback change) {
     setState(change);
     _saveSettings();
@@ -468,6 +492,7 @@ class HomeShellState extends State<LiquidGlassDemo>
   ///
   /// 原生侧见 MainActivity.applyAppNightMode;老系统/别的平台没有这条路,失败就算了
   /// —— 那只影响启动图的深浅,不该让换主题这件事报错。
+  @override
   void syncNightModeToNative(AppThemeMode mode) {
     Downloader.channel.invokeMethod<void>('setThemeMode', <String, String>{
       'mode': mode.name,
@@ -605,6 +630,7 @@ class HomeShellState extends State<LiquidGlassDemo>
   ///    通知一句"已是最新");
   /// 2. 用户忽略过的版本**照样弹更新卡** —— 是他自己点的检查,不该被上次的「忽略」
   ///    堵住;自动检查才按忽略状态闭嘴。
+  @override
   Future<void> checkForUpdate({bool manual = false}) async {
     if (checkingUpdate) return;
     setState(() => checkingUpdate = true);

@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:jicun/main.dart';
+import 'package:jicun/shell_controller.dart';
 import 'package:jicun/pages/preview.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
@@ -18,12 +18,12 @@ import 'package:jicun/widgets/animated_tab_icon.dart';
 /// 信息也占满一屏。只有解析成功后它们才逐张入场(见 [StaggerIn]),
 /// 而且只显示这次真解析出来的内容(见 [PreviewKind.forResult])。
 ///
-/// 状态全部挂在 [HomeShellState] 上,这里只是把那份状态画出来 ——
+/// 状态全部挂在 [ShellController] 上,这里只是把那份状态画出来 ——
 /// 状态留在本页自己的 State 里的话,切一次 tab 就被丢掉了。
 class ParsePage extends StatelessWidget {
   const ParsePage({super.key, required this.app});
 
-  final HomeShellState app;
+  final ShellController app;
 
   @override
   Widget build(BuildContext context) {
@@ -117,12 +117,12 @@ class ErrorNotice extends StatelessWidget {
 /// 输入框必须有:解析的入口是「手上有链接」,只给粘贴按钮的话,改一个字符就得去
 /// 别处重来。这里留一个可编辑的框,粘贴走系统长按菜单,清除走自带按钮。
 ///
-/// 输入框控制器和解析状态都在 [HomeShellState] 上,这张卡本身无状态 ——
+/// 输入框控制器和解析状态都在 [ShellController] 上,这张卡本身无状态 ——
 /// 否则切一次 tab 输入框就空了。
 class PasteLinkCard extends StatelessWidget {
   const PasteLinkCard({super.key, required this.app});
 
-  final HomeShellState app;
+  final ShellController app;
 
   void _start() {
     // 收键盘:解析结果就在这张卡下面,键盘立着会把它挡掉

@@ -5,7 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:jicun/downloader.dart';
-import 'package:jicun/main.dart';
+import 'package:jicun/shell_controller.dart';
 import 'package:jicun/parse_service.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
@@ -95,7 +95,7 @@ class PreviewCard extends StatefulWidget {
   final ParseResult? result;
 
   /// 根 State。下载结束要发系统通知,而开关在「通知管理与下载」页里、存在根 State 上。
-  final HomeShellState app;
+  final ShellController app;
 
   @override
   State<PreviewCard> createState() => PreviewCardState();

@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:jicun/downloader.dart';
-import 'package:jicun/main.dart';
+import 'package:jicun/shell_controller.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/notifications.dart';
 import 'package:jicun/ui/palette.dart';
 import 'package:jicun/ui/popup.dart';
+import 'package:jicun/ui/prefs.dart';
 import 'package:jicun/ui/widgets.dart';
 import 'package:jicun/widgets/tap_easter_egg.dart';
 
@@ -17,7 +18,7 @@ class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key, required this.app});
 
   /// 二级页要改的是应用级状态(主题、底栏),所以直接持有根 State。
-  final HomeShellState app;
+  final ShellController app;
 
   static const _options = <SettingsOption>[
     SettingsOption('主题与外观', '修改主题、显示效果'),
@@ -204,7 +205,7 @@ class NotificationManagementPage extends StatefulWidget {
   const NotificationManagementPage({super.key, required this.app});
 
   /// 这两个开关下载流程要用,所以和「主题与外观」一样直接持有根 State。
-  final HomeShellState app;
+  final ShellController app;
 
   @override
   State<NotificationManagementPage> createState() =>
@@ -215,7 +216,7 @@ class NotificationManagementPageState
     extends State<NotificationManagementPage> {
   bool _isSending = false;
 
-  HomeShellState get app => widget.app;
+  ShellController get app => widget.app;
 
   /// 要一次通知权限。和首次授权卡走同一个实现,免得两处判断分家。
   Future<bool> _requestPermission() => requestNotificationPermission();
@@ -343,7 +344,7 @@ class NotificationManagementPageState
 class AutoPastePage extends StatelessWidget {
   const AutoPastePage({super.key, required this.app});
 
-  final HomeShellState app;
+  final ShellController app;
 
   @override
   Widget build(BuildContext context) {
@@ -1025,9 +1026,6 @@ class EggHintCard extends StatelessWidget {
 }
 
 
-/// 系统主题的三个选项
-enum AppThemeMode { system, light, dark }
-
 /// 「系统主题」卡:收起时只有一行(标题 + 当前值 + 向下箭头),点箭头向下滑出
 /// 三个选项;选完自己回弹收起。
 ///
@@ -1035,7 +1033,7 @@ enum AppThemeMode { system, light, dark }
 class ThemeModeCard extends StatefulWidget {
   const ThemeModeCard({super.key, required this.app, required this.isDark});
 
-  final HomeShellState app;
+  final ShellController app;
   final bool isDark;
 
   @override
@@ -1123,7 +1121,7 @@ class ThemeModeCardState extends State<ThemeModeCard> {
 class ThemeAppearancePage extends StatelessWidget {
   const ThemeAppearancePage({super.key, required this.app});
 
-  final HomeShellState app;
+  final ShellController app;
 
   @override
   Widget build(BuildContext context) {
@@ -1165,7 +1163,7 @@ class ThemeAppearancePage extends StatelessWidget {
 class BarAppearanceCard extends StatefulWidget {
   const BarAppearanceCard({super.key, required this.app, required this.isDark});
 
-  final HomeShellState app;
+  final ShellController app;
   final bool isDark;
 
   @override
@@ -1250,7 +1248,7 @@ class UiScaleCard extends StatefulWidget {
   static const double min = 0.8;
   static const double max = 1.3;
 
-  final HomeShellState app;
+  final ShellController app;
   final bool isDark;
 
   @override

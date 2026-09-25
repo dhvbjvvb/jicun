@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:jicun/cover_cache.dart';
 import 'package:jicun/history_store.dart';
-import 'package:jicun/main.dart';
+import 'package:jicun/shell_controller.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
@@ -11,18 +11,18 @@ import 'package:jicun/ui/widgets.dart';
 /// 历史板块:一列解析记录卡。卡片样式与间距沿用首页/设置页(GlassPanel / 20 边距 /
 /// 12 间距),左边是封面,右上角横排「选择 / 全选 / 删除」。
 ///
-/// 记录**不在本页读取**:数据由 [HomeShellState] 持有并在启动时预读好,
+/// 记录**不在本页读取**:数据由 [ShellController] 持有并在启动时预读好,
 /// 这里只是画出来。本页的 State 一切走就被丢掉了,数据放这儿会每次重新读盘 ——
 /// 冷启动进历史页那一下空白就是这么来的。
 ///
 /// 选择模式是纯界面状态:切走 tab 就回到未选择状态。
 ///
 /// 非选择模式下单击一张卡 = 带着那条链接回解析页重新解析
-/// (走 [HomeShellState.reparseFromHistory])。
+/// (走 [ShellController.reparseFromHistory])。
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key, required this.app});
 
-  final HomeShellState app;
+  final ShellController app;
 
   @override
   State<HistoryPage> createState() => HistoryPageState();

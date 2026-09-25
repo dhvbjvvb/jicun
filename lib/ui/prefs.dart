@@ -25,3 +25,7 @@ const String kPrefsPreferredIps = 'cfip.list';
 const String kPrefsPreferredIpsAt = 'cfip.listAt';
 const String kPrefsApiHost = 'api.host';
 
+/// 系统主题的三个选项。存进 [kPrefsThemeMode],设置页与根壳都读它 ——
+/// 放在这里是为了让 ShellController 和设置页都能引用,不必互相 import。
+enum AppThemeMode { system, light, dark }
+
