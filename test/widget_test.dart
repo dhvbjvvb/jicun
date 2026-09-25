@@ -28,6 +28,7 @@ import 'package:jicun/history_store.dart';
 import 'package:jicun/main.dart';
 import 'package:jicun/parse_service.dart';
 import 'package:jicun/preferred_ip.dart';
+import 'package:jicun/ui/notifications.dart';
 import 'package:jicun/update_service.dart';
 
 /// 造一条历史记录用的解析结果。

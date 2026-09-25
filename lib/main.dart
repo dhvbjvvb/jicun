@@ -50,93 +50,9 @@ import 'widgets/animated_tab_icon.dart';
 import 'widgets/tap_easter_egg.dart';
 
 import 'api_host.dart';
-
-final FlutterLocalNotificationsPlugin _notifications =
-    FlutterLocalNotificationsPlugin();
-Future<bool?>? _notificationsReady;
-
-/// 这次下载结果该不该发系统通知。
-///
-/// 两个开关各管一头:下完了看「下载完成通知」,没下成看「下载失败通知」。
-bool downloadNoticeEnabled({
-  required bool ok,
-  required bool done,
-  required bool failed,
-}) => ok ? done : failed;
-
-/// 下载异常 → 给用户看的一句话。
-///
-/// 弹窗和通知原来直接贴 `'$error'`,于是用户看到的是
-/// `HttpException: SocketException: Connection reset` —— 原生那层的类型名加 Dart
-/// 这层的包装一起甩到脸上,除了吓人没有任何用处。这里按"该怎么办"归类:
-///
-/// - 连接被重置/读超时/IO 中断 → 网络问题,重试即可(下载器内部已经对每一段自动
-///   重试 3 次,能走到这里说明重试也没救回来);
-/// - 4xx → 这条直链本身失效了(CDN 的签名过期最常见),重试无用,得重新解析;
-/// - 其余原样透出,免得把还没见过的错因藏掉。
-///
-/// 原始异常仍然打 logcat:排障看日志,不看用户看到的这句话。
-String downloadErrorMessage(Object error) {
-  if (error is DownloadCancelled) return '已取消';
-  final raw = '$error';
-  if (kDebugMode) debugPrint('[dl] 下载失败原始异常: $raw');
-  if (raw.contains('文件不完整') || raw.contains('下载不完整')) {
-    return '文件不完整，请重试';
-  }
-  if (raw.contains('HTTP 4')) return '下载地址已失效，请重新解析';
-  if (raw.contains('SocketException') ||
-      raw.contains('SocketTimeoutException') ||
-      raw.contains('Connection reset') ||
-      raw.contains('timeout') ||
-      raw.contains('IOException')) {
-    return '网络中断，请重试';
-  }
-  return raw;
-}
-
-/// 所有系统通知共用的渠道。
-///
-/// Android 上渠道的通知名和重要性一旦创建就改不动了,所以改这个常量只对新安装的
-/// 设备生效。测试通知和下载通知走同一条渠道:「完成 / 失败」分成两个开关是应用里
-/// 的判断,不是系统里的渠道。
-const NotificationDetails _kNotificationDetails = NotificationDetails(
-  android: AndroidNotificationDetails(
-    '即存_notifications',
-    '通知管理与下载',
-    channelDescription: '下载完成、下载失败等提醒',
-    importance: Importance.high,
-    priority: Priority.high,
-    icon: 'ic_notification',
-    // 面板里那颗大图标由系统取应用图标,这里不再额外指定 largeIcon,
-    // 否则面板右侧会多出一个重复的图标。
-    color: Color(0xFF1F2A37),
-  ),
-);
-
-// 二级设置页那几项偏好的存储键
-const String _kThemeMode = 'ui.themeMode';
-const String _kHideTabLabels = 'ui.hideTabLabels';
-const String _kGlassBottomBar = 'ui.glassBottomBar';
-const String _kUiScale = 'ui.scale';
-
-// 「通知管理与下载」页的两个开关
-const String _kNotifyDownloadDone = 'notify.downloadDone';
-const String _kNotifyDownloadFailed = 'notify.downloadFailed';
-
-// 「自动粘贴并解析」页的开关:打开 APP 时自动粘贴剪贴板首条链接并解析。
-const String _kAutoPasteParse = 'clipboard.autoPasteParse';
-
-/// 用户点过「忽略」的那个版本。存的是版本号本身(如 `1.1.0`):
-/// 只有仓库又发了**更高**的版本才会再弹(见 [UpdateService.shouldPrompt])。
-const String _kIgnoredVersion = 'update.ignoredVersion';
-
-/// 首次安装的权限引导弹过没有。只在第一次装好后问一次(见 `_askPermissionsOnFirstLaunch`)。
-const String _kPermissionsAsked = 'perm.asked';
-
-// 服务端下发的优选 IP 列表、可用域名及其拉取时间(缓存用)
-const String _kPreferredIps = 'cfip.list';
-const String _kPreferredIpsAt = 'cfip.listAt';
-const String _kApiHost = 'api.host';
+import 'ui/notifications.dart';
+import 'ui/prefs.dart';
+import 'ui/playback.dart';
 
 /// 拉服务端下发的域名表与优选 IP 并落盘。
 ///
@@ -145,11 +61,11 @@ const String _kApiHost = 'api.host';
 Future<void> _refreshPreferredIps(SharedPreferences? prefs) async {
   final config = await PreferredIpUpdater.instance.fetch();
   if (config.isEmpty) return;
-  await prefs?.setString(_kPreferredIps, jsonEncode({'ips': config.ips}));
-  await prefs?.setInt(_kPreferredIpsAt, DateTime.now().millisecondsSinceEpoch);
+  await prefs?.setString(kPrefsPreferredIps, jsonEncode({'ips': config.ips}));
+  await prefs?.setInt(kPrefsPreferredIpsAt, DateTime.now().millisecondsSinceEpoch);
   // 域名可能被服务端换掉了(上一个被运营商阻断时),这个必须落盘 ——
   // 下次冷启动要先用它,而不是先用内置域名去撞一次墙。
-  await prefs?.setString(_kApiHost, apiHost);
+  await prefs?.setString(kPrefsApiHost, apiHost);
 }
 
 // 启动画面**只在原生侧**(浅深各一个启动入口,见 AndroidManifest 里的
@@ -169,7 +85,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 轻量 shader 先准备好,高级多通道 shader 首次真正用到时再加载,不阻塞冷启动。
   await LiquidGlassWidgets.initialize(warmUpMode: GlassWarmUpMode.never);
-  _notificationsReady = _notifications.initialize(
+  notificationsReady = notifications.initialize(
     settings: const InitializationSettings(
       android: AndroidInitializationSettings('ic_notification'),
     ),
@@ -185,14 +101,14 @@ Future<void> main() async {
   // 优选 IP 与域名:先把上次服务端下发的读回来 —— 域名尤其重要,主域名被运营商
   // 阻断时它就是唯一能用的入口;再按需刷新一次(缓存没过期就不发请求)。
   // 拉不到就用内置兜底,不影响启动。
-  final cachedHost = prefs?.getString(_kApiHost);
+  final cachedHost = prefs?.getString(kPrefsApiHost);
   if (cachedHost != null) setApiHost(cachedHost);
-  final cachedIps = prefs?.getString(_kPreferredIps);
+  final cachedIps = prefs?.getString(kPrefsPreferredIps);
   if (cachedIps != null) {
     final ips = parseServerConfig(cachedIps).ips;
     if (ips.isNotEmpty) PreferredIpConnector.remote = ips;
   }
-  if (preferredIpsStale(prefs?.getInt(_kPreferredIpsAt))) {
+  if (preferredIpsStale(prefs?.getInt(kPrefsPreferredIpsAt))) {
     _refreshPreferredIps(prefs);
   }
 
@@ -202,46 +118,6 @@ Future<void> main() async {
   // 上一次下载被系统杀掉时留下的分片(原生预分配到全尺寸,很占地方)。
   // 启动时清一遍,不阻塞首帧。
   unawaited(Downloader.sweepLeftovers());
-}
-
-/// 预览播放器的**跨页面记忆**、**暂停信号**与**恢复信号**。
-///
-/// 三件事都源于同一个坑:预览播放器活在页面树里,页面一重建/一销毁,播放器就跟着
-/// 没了。所以位置不能只存在播放器里。
-///
-/// 1. [positions]:按地址记住「上次播到哪」。切到历史/设置再切回来、或者解析出
-///    新地址导致播放器重建,都靠它把进度接回去 —— 而不是打回 00:00。
-/// 2. [pauseRequests]:点「下载媒体」时发一次信号,让正在播的视频和音频都停下来。
-///    只是暂停,播放器留着 —— 下载和预览抢带宽、抢音频焦点,让位是对的,但下载
-///    一结束用户要能接着看。
-/// 3. [resumeRequests]:下载那一趟结束(下完/取消/失败)时发一次,把上一条信号
-///    暂停掉的播放器放回去接着播。只恢复**点下载前本来就在播**的那些:用户自己
-///    按停的,不该被这个信号弄响。
-class _Playback {
-  const _Playback._();
-
-  /// 地址 → 上次播到的位置。地址带签名,同一条媒体在一次运行里地址是稳定的。
-  static final Map<String, Duration> positions = <String, Duration>{};
-
-  /// 递增即请求暂停;两个播放区各自记住消费到哪一次,互不干扰。
-  static final ValueNotifier<int> pauseRequests = ValueNotifier<int>(0);
-
-  /// 递增即请求恢复播放。同上,两边各自记住消费到哪一次。
-  static final ValueNotifier<int> resumeRequests = ValueNotifier<int>(0);
-
-  static void requestPause() => pauseRequests.value++;
-
-  static void requestResume() => resumeRequests.value++;
-
-  static void remember(String url, Duration position) {
-    positions[url] = position;
-  }
-
-  static Duration? recall(String url) {
-    final position = positions[url];
-    if (position == null || position <= Duration.zero) return null;
-    return position;
-  }
 }
 
 class LiquidGlassDemo extends StatefulWidget {
@@ -568,13 +444,13 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
       return;
     }
     try {
-      final ready = _notificationsReady;
+      final ready = notificationsReady;
       if (ready != null) await ready;
-      await _notifications.show(
+      await notifications.show(
         id: DateTime.now().millisecondsSinceEpoch.remainder(1000000),
         title: ok ? '下载完成' : '下载失败',
         body: ok ? '《$title》已保存到本地。' : '《$title》:${error ?? '下载没能完成'}',
-        notificationDetails: _kNotificationDetails,
+        notificationDetails: kNotificationDetails,
       );
     } catch (_) {}
   }
@@ -596,13 +472,13 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   void _saveSettings() {
     final prefs = widget.prefs;
     if (prefs == null) return;
-    prefs.setString(_kThemeMode, _themeMode.name);
-    prefs.setBool(_kHideTabLabels, _hideTabLabels);
-    prefs.setBool(_kGlassBottomBar, _glassBottomBar);
-    prefs.setDouble(_kUiScale, _uiScale);
-    prefs.setBool(_kNotifyDownloadDone, _notifyDownloadDone);
-    prefs.setBool(_kNotifyDownloadFailed, _notifyDownloadFailed);
-    prefs.setBool(_kAutoPasteParse, _autoPasteParse);
+    prefs.setString(kPrefsThemeMode, _themeMode.name);
+    prefs.setBool(kPrefsHideTabLabels, _hideTabLabels);
+    prefs.setBool(kPrefsGlassBottomBar, _glassBottomBar);
+    prefs.setDouble(kPrefsUiScale, _uiScale);
+    prefs.setBool(kPrefsNotifyDownloadDone, _notifyDownloadDone);
+    prefs.setBool(kPrefsNotifyDownloadFailed, _notifyDownloadFailed);
+    prefs.setBool(kPrefsAutoPasteParse, _autoPasteParse);
   }
 
   /// 把选好的主题模式同步给原生侧(Android 的**按应用夜间模式**)。
@@ -627,20 +503,20 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     if (kDebugMode) DownloadBench.checkIntent();
     final prefs = widget.prefs;
     _themeMode =
-        _ThemeMode.values.asNameMap()[prefs?.getString(_kThemeMode)] ??
+        _ThemeMode.values.asNameMap()[prefs?.getString(kPrefsThemeMode)] ??
         _ThemeMode.system;
-    _hideTabLabels = prefs?.getBool(_kHideTabLabels) ?? false;
-    _glassBottomBar = prefs?.getBool(_kGlassBottomBar) ?? true;
-    _uiScale = (prefs?.getDouble(_kUiScale) ?? 1).clamp(
+    _hideTabLabels = prefs?.getBool(kPrefsHideTabLabels) ?? false;
+    _glassBottomBar = prefs?.getBool(kPrefsGlassBottomBar) ?? true;
+    _uiScale = (prefs?.getDouble(kPrefsUiScale) ?? 1).clamp(
       _UiScaleCard.min,
       _UiScaleCard.max,
     );
     // 通知开关默认都开:下载完不给个动静才是异常。
-    _notifyDownloadDone = prefs?.getBool(_kNotifyDownloadDone) ?? true;
-    _notifyDownloadFailed = prefs?.getBool(_kNotifyDownloadFailed) ?? true;
+    _notifyDownloadDone = prefs?.getBool(kPrefsNotifyDownloadDone) ?? true;
+    _notifyDownloadFailed = prefs?.getBool(kPrefsNotifyDownloadFailed) ?? true;
     // 自动粘贴解析默认开:用户从别处复制链接回来就是想解析的。
-    _autoPasteParse = prefs?.getBool(_kAutoPasteParse) ?? true;
-    _ignoredVersion = prefs?.getString(_kIgnoredVersion);
+    _autoPasteParse = prefs?.getBool(kPrefsAutoPasteParse) ?? true;
+    _ignoredVersion = prefs?.getString(kPrefsIgnoredVersion);
     // widget.prefs 为 null 时(widget 测试、或调用方没传)自己也去读一次。忽略状态
     // 读不到就等于"没忽略过",每次启动都会再弹一次 —— 这条不能只靠调用方传进来的
     // 那一份。读是一次异步,所以存成 Future:检查更新那边会先等它落地,不然自动
@@ -649,7 +525,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
       _ignoredLoaded = _loadIgnoredVersion();
     }
     // 首次授权卡同理:widget.prefs 里没有就自己异步补读一次,不然每次启动都要弹。
-    _permissionsAsked = prefs?.getBool(_kPermissionsAsked) ?? false;
+    _permissionsAsked = prefs?.getBool(kPrefsPermissionsAsked) ?? false;
     if (!_permissionsAsked) {
       _permissionsAskedLoaded = _loadPermissionsAsked();
     }
@@ -835,7 +711,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
-      final ignored = prefs.getString(_kIgnoredVersion);
+      final ignored = prefs.getString(kPrefsIgnoredVersion);
       if (ignored != null && ignored.isNotEmpty) {
         _ignoredVersion = ignored;
       }
@@ -850,7 +726,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   Future<void> _rememberIgnored(String version) async {
     try {
       final prefs = widget.prefs ?? await SharedPreferences.getInstance();
-      await prefs.setString(_kIgnoredVersion, version);
+      await prefs.setString(kPrefsIgnoredVersion, version);
     } catch (_) {}
   }
 
@@ -914,7 +790,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     try {
       final prefs = widget.prefs ?? await SharedPreferences.getInstance();
       if (!mounted) return;
-      _permissionsAsked = prefs.getBool(_kPermissionsAsked) ?? false;
+      _permissionsAsked = prefs.getBool(kPrefsPermissionsAsked) ?? false;
     } catch (_) {
       // 读不到就当没问过:这次会再问一遍,最多重复一次
     }
@@ -923,7 +799,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   Future<void> _rememberPermissionsAsked() async {
     try {
       final prefs = widget.prefs ?? await SharedPreferences.getInstance();
-      await prefs.setBool(_kPermissionsAsked, true);
+      await prefs.setBool(kPrefsPermissionsAsked, true);
     } catch (_) {}
   }
 
@@ -2778,7 +2654,7 @@ class _PreviewCardState extends State<_PreviewCard> {
     // 开始下载就把正在播的预览停掉:视频和音频都在播的时候,下载会和它们抢
     // 带宽和音频焦点。只是暂停,位置留在当前进度上 —— 下载跑完由
     // [_startDownload] 发一次恢复信号,点下载前在播的那些接着播。
-    _Playback.requestPause();
+    Playback.requestPause();
     await _startDownload(result.title, items);
   }
 
@@ -2951,7 +2827,7 @@ class _PreviewCardState extends State<_PreviewCard> {
         } finally {
           // 这一趟结束了(下完/取消/失败)才把预览放回去 —— 不是卡片关掉就放:
           // 用户可以先收起卡片让下载在后台继续,那时候恢复预览又和下载抢带宽了。
-          _Playback.requestResume();
+          Playback.requestResume();
         }
         await app.notifyDownloadFinished(ok: true, title: title);
       },
@@ -3924,10 +3800,10 @@ class _VideoStageState extends State<_VideoStage> {
   @override
   void initState() {
     super.initState();
-    _seenPause = _Playback.pauseRequests.value;
-    _seenResume = _Playback.resumeRequests.value;
-    _Playback.pauseRequests.addListener(_onPauseRequest);
-    _Playback.resumeRequests.addListener(_onResumeRequest);
+    _seenPause = Playback.pauseRequests.value;
+    _seenResume = Playback.resumeRequests.value;
+    Playback.pauseRequests.addListener(_onPauseRequest);
+    Playback.resumeRequests.addListener(_onResumeRequest);
     _listeningPause = true;
     _load();
   }
@@ -3955,15 +3831,15 @@ class _VideoStageState extends State<_VideoStage> {
   /// [ParseResult.previewVideoUrl]),占的内存很小,于是改成暂停:下载结束还能
   /// 接着看,画面停在原处,不用重新缓冲。
   ///
-  /// 位置先记下来,万一播放器后来还是得重建,`_Playback.recall` 靠着它接回原处。
+  /// 位置先记下来,万一播放器后来还是得重建,`Playback.recall` 靠着它接回原处。
   void _onPauseRequest() {
-    final request = _Playback.pauseRequests.value;
+    final request = Playback.pauseRequests.value;
     if (request == _seenPause) return;
     _seenPause = request;
     final controller = _controller;
     if (controller == null) return;
     if (controller.value.isInitialized) {
-      _Playback.remember(widget.url, controller.value.position);
+      Playback.remember(widget.url, controller.value.position);
     }
     _resumeAfterDownload = controller.value.isPlaying;
     controller.pause();
@@ -3971,7 +3847,7 @@ class _VideoStageState extends State<_VideoStage> {
 
   /// 下载那一趟结束了:点下载前在播的话,接着播。
   void _onResumeRequest() {
-    final request = _Playback.resumeRequests.value;
+    final request = Playback.resumeRequests.value;
     if (request == _seenResume) return;
     _seenResume = request;
     if (!_resumeAfterDownload) return;
@@ -3989,7 +3865,7 @@ class _VideoStageState extends State<_VideoStage> {
       await controller.initialize();
       await controller.setLooping(true);
       // 这条视频上次播到哪就接回哪 —— 切走再切回来不该打回 00:00。
-      final remembered = _Playback.recall(widget.url);
+      final remembered = Playback.recall(widget.url);
       if (remembered != null && !_restored) {
         _restored = true;
         await controller.seekTo(remembered);
@@ -4041,13 +3917,13 @@ class _VideoStageState extends State<_VideoStage> {
   @override
   void dispose() {
     if (_listeningPause) {
-      _Playback.pauseRequests.removeListener(_onPauseRequest);
-      _Playback.resumeRequests.removeListener(_onResumeRequest);
+      Playback.pauseRequests.removeListener(_onPauseRequest);
+      Playback.resumeRequests.removeListener(_onResumeRequest);
     }
     // 离开页面前把进度记下来:页面被销毁时播放器也跟着没了,下次要靠这个接回去。
     final controller = _controller;
     if (controller != null && controller.value.isInitialized) {
-      _Playback.remember(widget.url, controller.value.position);
+      Playback.remember(widget.url, controller.value.position);
     }
     _controller?.dispose();
     super.dispose();
@@ -4111,7 +3987,7 @@ class _VideoStageState extends State<_VideoStage> {
         // 每一帧都记一下播到哪了。销毁时再读一次是异步的、可能来不及,
         // 所以以这里为准。
         if (ready && value.position > Duration.zero) {
-          _Playback.remember(widget.url, value.position);
+          Playback.remember(widget.url, value.position);
         }
 
         // 封面一直铺到画面真的开始走为止。
@@ -4244,10 +4120,10 @@ class _AudioStageState extends State<_AudioStage> {
   @override
   void initState() {
     super.initState();
-    _seenPause = _Playback.pauseRequests.value;
-    _seenResume = _Playback.resumeRequests.value;
-    _Playback.pauseRequests.addListener(_onPauseRequest);
-    _Playback.resumeRequests.addListener(_onResumeRequest);
+    _seenPause = Playback.pauseRequests.value;
+    _seenResume = Playback.resumeRequests.value;
+    Playback.pauseRequests.addListener(_onPauseRequest);
+    Playback.resumeRequests.addListener(_onResumeRequest);
     _load();
   }
 
@@ -4268,19 +4144,19 @@ class _AudioStageState extends State<_AudioStage> {
 
   /// 点「下载媒体」时收到一次信号:暂停(理由同 [_VideoStageState._onPauseRequest])。
   void _onPauseRequest() {
-    final request = _Playback.pauseRequests.value;
+    final request = Playback.pauseRequests.value;
     if (request == _seenPause) return;
     _seenPause = request;
     final player = _player;
     if (player == null) return;
-    _Playback.remember(widget.url, player.position);
+    Playback.remember(widget.url, player.position);
     _resumeAfterDownload = player.playing;
     player.pause();
   }
 
   /// 下载那一趟结束了:点下载前在播的话,接着播。
   void _onResumeRequest() {
-    final request = _Playback.resumeRequests.value;
+    final request = Playback.resumeRequests.value;
     if (request == _seenResume) return;
     _seenResume = request;
     if (!_resumeAfterDownload) return;
@@ -4295,7 +4171,7 @@ class _AudioStageState extends State<_AudioStage> {
       _player = player;
       await player.setUrl(widget.url);
       // 上次播到哪就接回哪,切走再切回来不打回 00:00。
-      final remembered = _Playback.recall(widget.url);
+      final remembered = Playback.recall(widget.url);
       if (remembered != null && !_restored) {
         _restored = true;
         await player.seek(remembered);
@@ -4309,11 +4185,11 @@ class _AudioStageState extends State<_AudioStage> {
 
   @override
   void dispose() {
-    _Playback.pauseRequests.removeListener(_onPauseRequest);
-    _Playback.resumeRequests.removeListener(_onResumeRequest);
+    Playback.pauseRequests.removeListener(_onPauseRequest);
+    Playback.resumeRequests.removeListener(_onResumeRequest);
     final player = _player;
     if (player != null) {
-      _Playback.remember(widget.url, player.position);
+      Playback.remember(widget.url, player.position);
     }
     _player?.dispose();
     super.dispose();
@@ -4363,7 +4239,7 @@ class _AudioStageState extends State<_AudioStage> {
                     final position = positionSnapshot.data ?? Duration.zero;
                     // 每一帧记一下播到哪(销毁时再读是异步的,可能来不及)。
                     if (position > Duration.zero) {
-                      _Playback.remember(widget.url, position);
+                      Playback.remember(widget.url, position);
                     }
                     return _PlaybackRow(
                       isDark: isDark,
@@ -5976,9 +5852,9 @@ class _QualityOptionRow extends StatelessWidget {
 /// 系统通知现在允不允许。问不出来返回 null。
 Future<bool?> _notificationsEnabled() async {
   try {
-    final ready = _notificationsReady;
+    final ready = notificationsReady;
     if (ready != null) await ready;
-    final android = _notifications
+    final android = notifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
@@ -5991,9 +5867,9 @@ Future<bool?> _notificationsEnabled() async {
 /// 要一次系统通知权限。老系统(13 以下)本来就是默认允许,拿不到答复按"给了"算。
 Future<bool> _requestNotificationPermission() async {
   try {
-    final ready = _notificationsReady;
+    final ready = notificationsReady;
     if (ready != null) await ready;
-    final android = _notifications
+    final android = notifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
@@ -6251,13 +6127,13 @@ class _NotificationManagementPageState
         );
         return;
       }
-      final ready = _notificationsReady;
+      final ready = notificationsReady;
       if (ready != null) await ready;
-      await _notifications.show(
+      await notifications.show(
         id: DateTime.now().millisecondsSinceEpoch.remainder(1000000),
         title: '即存通知测试',
         body: '通知功能运行正常。',
-        notificationDetails: _kNotificationDetails,
+        notificationDetails: kNotificationDetails,
       );
     } finally {
       if (mounted) setState(() => _isSending = false);
