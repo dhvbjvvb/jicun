@@ -660,7 +660,7 @@ class ParseResult {
   ///
   /// 早先这里优先返回 videoUrl,理由是「audio_url 只是背景音乐」——那个判断是错的:
   /// 当时看到的「音频只有 17 秒」其实是**换链接后播放器没重载**残留的上一条数据
-  /// (见 _AudioStage.didUpdateWidget),不是 audio_url 的真实时长。
+  /// (见 AudioStage.didUpdateWidget),不是 audio_url 的真实时长。
   ///
   /// 只有接口确实没给 audio_url 时才退回视频本身(视频自带音轨,一样能听)。
   ///

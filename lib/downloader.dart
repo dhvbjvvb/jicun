@@ -39,7 +39,7 @@ class DownloadItem {
 
   /// 落盘用的文件名。
   ///
-  /// **下载途中会被改**:解析期只能按 URL 猜后缀(见 main.dart 的 `_imageExt`),
+  /// **下载途中会被改**:解析期只能按 URL 猜后缀(见 main.dart 的 `imageExt`),
   /// 而头条的直链以 `~tplv-tt-large.image` 结尾,猜出来的后缀和真实格式无关。收到
   /// 响应头/文件头之后由 `Downloader._retag` 改成真实格式,`publishImpl` 再拿它当
   /// MediaStore 的 `DISPLAY_NAME` —— 所以这里必须可变,只改临时文件的名字等于没改。
@@ -889,7 +889,7 @@ class Downloader {
   /// 按真实内容给这条媒体定名字,并把临时文件改成同名,返回改名后的文件。
   ///
   /// **为什么必须换**:`item.fileName` 的扩展名是解析期按 URL 猜的(见 main.dart 的
-  /// `_imageExt`),而头条所有图片直链都过 CDN 变换,路径以 `~tplv-tt-large.image`
+  /// `imageExt`),而头条所有图片直链都过 CDN 变换,路径以 `~tplv-tt-large.image`
   /// 结尾,没有 `.gif` / `.jpg` 可猜 —— 猜不到就落到兜底值。动图因此被命名成静态图
   /// 的后缀,部分看图软件不再播放动画,看起来就像"GIF 变 PNG 了"(实测:同一张
   /// 4.23MB 的 GIF89a,只是名字错了)。文件内容一直是原样的,这里只改名字,不重新

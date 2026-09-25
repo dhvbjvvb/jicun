@@ -1313,7 +1313,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 先让预览播起来。播放按钮按尺寸认:音频卡那颗也是 play_fill,但没网可播、
-    // 整行是灰的,而这里要的是媒体卡那颗(见 _PlaybackRow)。
+    // 整行是灰的,而这里要的是媒体卡那颗(见 PlaybackRow)。
     await tester.tap(
       find
           .byWidgetPredicate(

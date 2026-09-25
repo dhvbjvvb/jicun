@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:jicun/main.dart';
 import 'package:jicun/pages/history.dart';
+import 'package:jicun/pages/preview.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/palette.dart';
