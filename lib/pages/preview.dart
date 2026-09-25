@@ -12,6 +12,7 @@ import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/notifications.dart';
 import 'package:jicun/ui/palette.dart';
 import 'package:jicun/ui/playback.dart';
+import 'package:jicun/ui/popup.dart';
 import 'package:jicun/ui/widgets.dart';
 import 'package:jicun/widgets/animated_tab_icon.dart';
 import 'package:just_audio/just_audio.dart';

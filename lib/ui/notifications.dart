@@ -65,3 +65,35 @@ const NotificationDetails kNotificationDetails = NotificationDetails(
   ),
 );
 
+
+/// 系统通知现在允不允许。问不出来返回 null。
+Future<bool?> notificationsEnabled() async {
+  try {
+    final ready = notificationsReady;
+    if (ready != null) await ready;
+    final android = notifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    return await android?.areNotificationsEnabled();
+  } catch (_) {
+    return null;
+  }
+}
+
+/// 要一次系统通知权限。老系统(13 以下)本来就是默认允许,拿不到答复按"给了"算。
+Future<bool> requestNotificationPermission() async {
+  try {
+    final ready = notificationsReady;
+    if (ready != null) await ready;
+    final android = notifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    final granted = await android?.requestNotificationsPermission();
+    return granted ?? true;
+  } catch (_) {
+    return true;
+  }
+}
+

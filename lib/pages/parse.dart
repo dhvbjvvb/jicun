@@ -6,6 +6,7 @@ import 'package:jicun/pages/preview.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/palette.dart';
+import 'package:jicun/ui/popup.dart';
 import 'package:jicun/ui/widgets.dart';
 import 'package:jicun/widgets/animated_tab_icon.dart';
 
