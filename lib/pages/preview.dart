@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:jicun/downloader.dart';
 import 'package:jicun/main.dart';
 import 'package:jicun/parse_service.dart';
+import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/notifications.dart';

@@ -1,14 +1,12 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:jicun/cover_cache.dart';
 import 'package:jicun/history_store.dart';
 import 'package:jicun/main.dart';
-import 'package:jicun/pages/parse.dart';
+import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/palette.dart';
 import 'package:jicun/ui/widgets.dart';
-import 'package:jicun/widgets/animated_tab_icon.dart';
 
 /// 历史板块:一列解析记录卡。卡片样式与间距沿用首页/设置页(GlassPanel / 20 边距 /
 /// 12 间距),左边是封面,右上角横排「选择 / 全选 / 删除」。
@@ -198,76 +196,6 @@ String shortTime(DateTime time) {
   if (days <= 0) return '今天 $clock';
   if (days == 1) return '昨天 $clock';
   return '${time.month} 月 ${time.day} 日';
-}
-
-/// 淡底 + 图标 + 文字的胶囊按钮。历史页顶栏那排「选择 / 全选 / 删除」,
-/// 和解析页「粘贴链接」卡右上角的「粘贴 / 清空」,共用这一颗。
-///
-/// 手写而不是 FilledButton:后者自带 48 的触控区,几颗并排会把标题行撑得比标题高一截。
-/// 配色沿用首页那些次级按钮(淡底 + 强调色);[destructive] 的红只给「删除」这种。
-class PillAction extends StatelessWidget {
-  const PillAction({
-    super.key,
-    required this.asset,
-    required this.label,
-    required this.onTap,
-    this.active = false,
-    this.destructive = false,
-  });
-
-  /// 已经解析好的资源路径(用 [historyIcon] / [homeIcon] 拼)。
-  final String asset;
-  final String label;
-  final VoidCallback? onTap;
-
-  /// 选择模式开着时高亮这颗按钮。
-  final bool active;
-
-  /// 删除键用红字,和普通动作分开。
-  final bool destructive;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final enabled = onTap != null;
-    final Color color = destructive
-        ? (isDark ? const Color(0xFFFF7B72) : const Color(0xFFC0392B))
-        : (isDark ? const Color(0xFF5AA9FF) : const Color(0xFF1257C9));
-    final Color foreground = enabled
-        ? color
-        : settingsPalette(isDark).secondary.withValues(alpha: 0.45);
-    // 这两颗按钮不在玻璃卡里,得自己当 Material 宿主 —— PlainTap 是 InkWell,
-    // 找不到 Material 祖先会直接断言失败。
-    return Material(
-      type: MaterialType.transparency,
-      child: PlainTap(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          decoration: BoxDecoration(
-            color: active
-                ? color.withValues(alpha: isDark ? 0.26 : 0.14)
-                : (isDark ? const Color(0x1FFFFFFF) : const Color(0x14000000)),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Row(
-            children: [
-              TintedSvgIcon(asset, size: 18, color: foreground),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// 一条记录卡:勾选圈(仅选择模式)+ 封面 + 标题副标题。

@@ -1,8 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:jicun/main.dart';
-import 'package:jicun/pages/history.dart';
 import 'package:jicun/pages/preview.dart';
+import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/palette.dart';
@@ -111,56 +111,6 @@ class ErrorNotice extends StatelessWidget {
     );
   }
 }
-
-/// 标题行高度:三个板块统一 32。
-///
-/// 为什么定死:历史板块右上角挂着「选择 / 删除」两颗按钮(整颗 32 高)。如果让标题
-/// 和它们一起参与布局、按默认居中,标题就被按钮撑高的那一行挤下去 —— 真机实测
-/// 比解析板块低 25 设备px,切板块时一眼就看出来。行高定死之后,右侧有没有按钮、
-/// 按钮多高,都不再影响标题的位置。
-const double kBoardHeaderHeight = 32;
-
-/// 标题行的顶边距。
-///
-/// 原来是 24,但那是对着一颗裸 Text 量的。标题现在在 32 高的行里居中,会往下走
-/// (32 - 标题文字盒高) / 2 ≈ 6,所以顶边距减掉同样的 6 —— 标题墨迹位置保持和
-/// 改动前「解析」那颗裸 Text 一致(真机实测 232 设备px)。
-const double kBoardHeaderTop = 18;
-
-/// 板块左上角那行标题:标题 + 可选的右侧按钮。三个板块共用,高度才统一。
-///
-/// 右侧那组按钮用 FittedBox 兜底:历史板块现在有三颗(选择/全选/删除),
-/// 窄屏上放不下会整行溢出(flex 溢出会画黄黑条),放不下时按比例缩一点比溢出差。
-class BoardHeader extends StatelessWidget {
-  const BoardHeader({super.key, required this.title, this.trailing});
-
-  final String title;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: kBoardHeaderHeight,
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: CupertinoTheme.of(context).textTheme.navTitleTextStyle,
-          ),
-          if (trailing != null)
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: trailing,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 
 /// 粘贴链接卡:刻意比预览卡矮 —— 一行说明 + 一个输入框 + 一颗按钮。
 ///
