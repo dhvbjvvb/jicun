@@ -1,4 +1,4 @@
-"""Cold-start the app and grab frames back to back, recording each one's colours.
+﻿"""Cold-start the app and grab frames back to back, recording each one's colours.
 
 Used to catch the splash window: it lives a few hundred milliseconds, so a single
 screencap after the launch is a coin flip. Prints a line per frame and keeps the
@@ -34,3 +34,4 @@ for i in range(1, 7):
     w, h = im.size
     print(f"{tag} {i} corner={im.getpixel((8, 8))} top={im.getpixel((w // 2, 300))} mid={im.getpixel((w // 2, h // 2))}")
 print(adb("shell", "logcat", "-d"))
+

@@ -108,31 +108,36 @@ echo "=== ips.json ==="
 cat "$OUT_DIR/ips.json" 2>/dev/null || echo "  (没有生成,APP 会继续用内置池)"
 echo
 
-# ── 自检:四条上游路各自试一发 ──
+# ── 自检:对外几条路各试一发 ──
 #
 # 部署完当场就知道通没通,不用再回本地敲 curl。测的是「配置有没有生效」和
-# 「nginx 到上游通不通」,不关心链接本身能不能解析 —— 所以随便给一条抖音链接,
-# 四条路都拿它去打:上游会回 422「解析参数与该平台不匹配」,那也是**通了**的表现
-# (说明请求到了上游),真正要警惕的是 404(路没配上)和 502(到上游断了)。
-echo "=== 自检:上游四条路 ==="
+# 「nginx 到上游通不通」,不关心链接本身能不能解析 —— 所以随便给一条抖音链接:
+# 解析路回 200(解析成功)、400(上游认得出这条链接但解析失败)或 503(上游断)
+# 都说明请求确实到了;真正要警惕的是 404(路没配上)和 000(本机出不去)。
+#
+# 曾经这里探的是 /parse2/{dy,ks,wx,db} 四条 —— 解析改成 APP 直连上游之后
+# 那几条 location 已经删掉,再探只会拿到 404(见文件头)。
+echo "=== 自检:对外三条路 ==="
 PROBE_LINK=${JICUN_PROBE_LINK:-https://v.douyin.com/cfrsgHwx7bs/}
 # curl 的 -w 模板放进变量再传:写成字面量时,%{...} 会被**调用方**的 shell
 # (本机 PowerShell)当成变量插值吃掉,于是 curl 收到一个叫 %http_code 的东西,
 # 打出来的就不是状态码。这是实测踩到的。
 PROBE_FMT='%{http_code}'
-for pair in "dy:抖音" "ks:快手" "wx:微信视频号" "db:豆包"; do
-    code=${pair%%:*}
-    name=${pair##*:}
+probe() {
+    local path=$1 name=$2 http head mark
     http=$(curl -s -m 30 -o /tmp/jicun-probe.out -w "$PROBE_FMT" \
-        "https://mxper.cc.cd/parse2/$code?url=$PROBE_LINK" 2>/dev/null || echo 000)
+        "https://mxper.cc.cd$path" 2>/dev/null || echo 000)
     head=$(head -c 120 /tmp/jicun-probe.out 2>/dev/null | tr -d '\n')
     case "$http" in
-        200|422) mark="OK  " ;;
-        *)       mark="!!  " ;;
+        200|204|400|422) mark="OK  " ;;
+        *)               mark="!!  " ;;
     esac
-    echo "  $mark /parse2/$code ($name) → HTTP $http  $head"
-done
+    echo "  $mark $path ($name) → HTTP $http  $head"
+}
+probe "/ping" "nginx 活着"
+probe "/ips.json" "优选 IP 下发"
+probe "/parse?url=$PROBE_LINK" "解析反代"
 rm -f /tmp/jicun-probe.out
-echo "  (200/422 都算通;404 = 配置没生效;502 = 本机到上游断;000 = 本机出不去)"
+echo "  (200/204/400 都算通;404 = 配置没生效;503 = 本机到上游断;429 = 撞限流;000 = 本机出不去)"
 echo
 

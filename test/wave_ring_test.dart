@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:untitled/main.dart';
+import 'package:jicun/main.dart';
 
 /// 波浪进度环的几何自检:半径不出带宽、整圈首尾闭合、浪数对得上、相位推着浪走,
 /// 以及底圈和进度那两段弧上的浪必须落在同一处(否则看着就是两圈错开的浪)。

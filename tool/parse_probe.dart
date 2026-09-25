@@ -14,7 +14,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:untitled/parse_service.dart';
+import 'package:jicun/parse_service.dart';
 
 Future<void> main(List<String> args) async {
   final raw = args.contains('--raw');

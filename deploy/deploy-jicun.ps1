@@ -5,41 +5,43 @@
 #   2. scp the bundle up;
 #   3. unpack on the server, rename into place under /tmp, run jicun-deploy.sh with sudo;
 #   4. the server output is printed here - including nginx -t, reload, and a self-test
-#      of all four upstream routes.
+#      of the live routes (/ping, /ips.json, /parse).
 #
-# The API key never lands in this repo: pass it with -BugpkKey, and deploy-nginx.sh
-# installs it on the server as /etc/nginx/jicun-secret2.conf (mode 600).
+# The media-parser key never lands in this repo: pass it with -MediaParserKey, and
+# deploy-nginx.sh installs it on the server as /etc/nginx/jicun-secret.conf (mode 600),
+# where nginx injects it as the Authorization header for /parse. The BugPk upstream key
+# is not needed here at all any more: the app talks to BugPk directly.
 #
 # Usage:
-#   pwsh deploy/deploy-jicun.ps1 -Target root@1.2.3.4 -BugpkKey bp_live_xxx
-#   pwsh deploy/deploy-jicun.ps1 -Target root@1.2.3.4 -BugpkKeyFile C:\key.txt
+#   pwsh deploy/deploy-jicun.ps1 -Target root@1.2.3.4 -MediaParserKey mp_xxx
+#   pwsh deploy/deploy-jicun.ps1 -Target root@1.2.3.4 -MediaParserKeyFile C:\key.txt
 #   pwsh deploy/deploy-jicun.ps1 -Target root@1.2.3.4     # key already on the server
 #
 # Parameters:
-#   -Target        server, optionally with user, e.g. root@1.2.3.4 (required)
-#   -Port          SSH port, default 22
-#   -IdentityFile  private key path (default: let ssh decide, honours ~/.ssh/config)
-#   -BugpkKey      BugPk upstream bp_live key, as a string
-#   -BugpkKeyFile  file holding that key (safer: keeps it out of shell history)
+#   -Target              server, optionally with user, e.g. root@1.2.3.4 (required)
+#   -Port                SSH port, default 22
+#   -IdentityFile        private key path (default: let ssh decide, honours ~/.ssh/config)
+#   -MediaParserKey      media-parser mp_ key, as a string
+#   -MediaParserKeyFile  file holding that key (safer: keeps it out of shell history)
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Target,
     [int]$Port = 22,
     [string]$IdentityFile,
-    [string]$BugpkKey,
-    [string]$BugpkKeyFile
+    [string]$MediaParserKey,
+    [string]$MediaParserKeyFile
 )
 
 $ErrorActionPreference = 'Stop'
 $deployDir = $PSScriptRoot
 
-if ($BugpkKey -and $BugpkKeyFile) {
-    throw 'give either -BugpkKey or -BugpkKeyFile, not both'
+if ($MediaParserKey -and $MediaParserKeyFile) {
+    throw 'give either -MediaParserKey or -MediaParserKeyFile, not both'
 }
-if ($BugpkKeyFile) {
-    if (-not (Test-Path $BugpkKeyFile)) { throw "key file not found: $BugpkKeyFile" }
-    $BugpkKey = (Get-Content $BugpkKeyFile -Raw).Trim()
+if ($MediaParserKeyFile) {
+    if (-not (Test-Path $MediaParserKeyFile)) { throw "key file not found: $MediaParserKeyFile" }
+    $MediaParserKey = (Get-Content $MediaParserKeyFile -Raw).Trim()
 }
 
 # Local file name -> name under /tmp on the server. tar cannot rename members, so the
@@ -98,22 +100,24 @@ Write-Host '== 2/3 check sudo =='
 if ($LASTEXITCODE -ne 0) {
     Write-Host 'remote sudo needs a password; this script cannot type it.' -ForegroundColor Yellow
     Write-Host 'Run as root, or give that account passwordless sudo:'
-    Write-Host '  pwsh deploy/deploy-jicun.ps1 -Target root@<ip> -BugpkKey bp_live_xxx'
+    Write-Host '  pwsh deploy/deploy-jicun.ps1 -Target root@<ip> -MediaParserKey mp_xxx'
     throw 'sudo unavailable'
 }
 
-# The API key is staged as a file and scp'd, never interpolated into a shell command:
+# The key is staged as a file and scp'd, never interpolated into a shell command:
 # quotes or semicolons in it would break that line, and it would show up in shell history.
+# The file holds the one header line nginx includes for /parse (see jicun-secret.conf
+# in nginx-mxper.cc.cd.conf).
 $secretLocal = $null
-if ($BugpkKey) {
-    $secretLocal = Join-Path $env:TEMP 'jicun-secret2.conf'
-    $line = 'proxy_set_header X-API-Key "' + $BugpkKey + '";'
+if ($MediaParserKey) {
+    $secretLocal = Join-Path $env:TEMP 'jicun-secret.conf'
+    $line = 'proxy_set_header Authorization "Bearer ' + $MediaParserKey + '";'
     [System.IO.File]::WriteAllText($secretLocal, $line + "`n")
     Write-Host '== upload key =='
-    & scp @scpArgs $secretLocal "${Target}:/tmp/jicun-secret2.conf"
+    & scp @scpArgs $secretLocal "${Target}:/tmp/jicun-secret.conf"
     if ($LASTEXITCODE -ne 0) { throw 'scp key failed' }
     Remove-Item $secretLocal -Force
-    Invoke-Remote 'chmod 600 /tmp/jicun-secret2.conf'
+    Invoke-Remote 'chmod 600 /tmp/jicun-secret.conf'
 }
 
 Write-Host '== 3/3 unpack + deploy =='
@@ -142,6 +146,6 @@ Invoke-Remote ($steps -join ' && ')
 
 Write-Host ''
 Write-Host '== done ==' -ForegroundColor Green
-Write-Host 'If you saw RELOADED OK and all four /parse2/* probes are 200/422, this side is ready.'
+Write-Host 'If you saw RELOADED OK and the /ping, /ips.json and /parse probes are OK, this side is ready.'
 Write-Host 'Manual check:'
-Write-Host "  curl -s 'https://mxper.cc.cd/parse2/dy?url=<douyin share link>' | head -c 200"
+Write-Host "  curl -s 'https://mxper.cc.cd/parse?url=<douyin share link>' | head -c 200"

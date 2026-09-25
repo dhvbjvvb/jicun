@@ -1,4 +1,4 @@
-"""One round of: launch → pick 深色 in the app → kill → relaunch, keeping the frames.
+﻿"""One round of: launch → pick 深色 in the app → kill → relaunch, keeping the frames.
 
 Unlike the other probes this one does not restart the app before picking the mode,
 so it follows the same path a person takes when the app is already open.
@@ -78,3 +78,4 @@ for i in range(1, 6):
     print(f"启动帧{i}", shot(f"{tag}_launch", i))
 time.sleep(1.5)
 print("日志", [l.split("Jicun   : ")[-1].strip() for l in adb("shell", "logcat", "-d").splitlines() if "Jicun" in l][:2])
+

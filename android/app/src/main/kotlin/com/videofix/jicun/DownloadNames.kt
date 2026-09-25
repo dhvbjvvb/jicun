@@ -1,4 +1,4 @@
-package com.videofix.jicun
+﻿package com.videofix.jicun
 
 /**
  * 相册里那份名字的重名号。
@@ -56,3 +56,4 @@ internal fun freeName(name: String, existing: Set<String>): String {
     while ("${stem}_$next$ext" in existing) next++
     return "${stem}_$next$ext"
 }
+

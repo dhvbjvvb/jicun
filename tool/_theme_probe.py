@@ -1,4 +1,4 @@
-"""Pick a theme mode through the app's own UI and sample the next cold start.
+﻿"""Pick a theme mode through the app's own UI and sample the next cold start.
 
 The device blocks `input tap` (vivo drops injected touch unless "USB debugging
 (security settings)" is on) but accepts `input motionevent`, so the taps go out
@@ -158,3 +158,4 @@ for mode in sys.argv[1:]:
     print(f"  launcher 入口 {entry}")
     print(f"  冷启动帧 {frames}")
     print(f"  冷启动日志 {jicun_log(1)}")
+

@@ -5,7 +5,7 @@
 
 Flutter 写界面,下载这一段走 Kotlin 原生实现。
 
-- 版本:3.0.5
+- 版本:3.0.7
 - 平台:Android(Flutter 3.x / Dart SDK ^3.13.3 / JDK 17)
 - 许可证:MIT
 

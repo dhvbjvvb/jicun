@@ -23,12 +23,12 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
-import 'package:untitled/downloader.dart';
-import 'package:untitled/history_store.dart';
-import 'package:untitled/main.dart';
-import 'package:untitled/parse_service.dart';
-import 'package:untitled/preferred_ip.dart';
-import 'package:untitled/update_service.dart';
+import 'package:jicun/downloader.dart';
+import 'package:jicun/history_store.dart';
+import 'package:jicun/main.dart';
+import 'package:jicun/parse_service.dart';
+import 'package:jicun/preferred_ip.dart';
+import 'package:jicun/update_service.dart';
 
 /// 造一条历史记录用的解析结果。
 ParseResult _sampleResult(String title) => ParseResult(
@@ -1616,7 +1616,11 @@ void main() {
   testWidgets('粘贴链接卡:空着时「清空」不可点,「粘贴」随时把剪贴板塞进去', (tester) async {
     usePhoneSurface(tester);
     useClipboardText('https://v.douyin.com/abcd/');
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    // 自动粘贴关掉:这条用例测的是「粘贴」这颗按钮。启动时自动把剪贴板填进输入框
+    // 会让"输入框空着"这个前提不成立(自动粘贴有它自己的用例)。
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'clipboard.autoPasteParse': false,
+    });
     final prefs = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(LiquidGlassDemo(prefs: prefs));
@@ -3188,3 +3192,4 @@ void main() {
     });
   });
 }
+

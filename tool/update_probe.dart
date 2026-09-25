@@ -14,7 +14,7 @@ library;
 
 import 'dart:io';
 
-import 'package:untitled/update_service.dart';
+import 'package:jicun/update_service.dart';
 
 Future<void> main(List<String> args) async {
   var which = 'both';

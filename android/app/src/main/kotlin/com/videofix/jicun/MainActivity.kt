@@ -1,4 +1,4 @@
-package com.videofix.jicun
+﻿package com.videofix.jicun
 
 import android.content.ClipboardManager
 import android.content.ComponentName
@@ -7,6 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.app.UiModeManager
+import android.content.pm.ApplicationInfo
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -176,6 +179,9 @@ open class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         applyAppNightMode(null)
+        // 兜底:老版本升上来、或换主题后进程没走过 setThemeMode 的,
+        // 回到前台时把启动入口对到当前这一档,下次冷启动就是对的。
+        syncLaunchEntry(null)
     }
 
     /**
@@ -241,17 +247,18 @@ open class MainActivity : FlutterActivity() {
     /**
      * 系统现在是不是深色;读不到按浅色(系统默认)。
      *
-     * 读的是**系统**那一档(`getNightMode`),不是 app 被按应用定死之后那一档 ——
-     * 后者会把「跟随系统」永久钉在第一次读到的值上。
-     *
-     * 已知不足(老行为,这次没动):手机用**定时深色**(如 22:00–07:00)时
-     * `getNightMode` 返回的是 `MODE_NIGHT_CUSTOM`/`AUTO` 而不是 `MODE_NIGHT_YES`,
-     * 这里会当成浅色 —— 于是「跟随系统」+ 定时深色会被定成浅色,不跟手机。
+     * 读的是系统资源那份配置(`Resources.getSystem()`),不是 app 被按应用定死之后
+     * 那一档 —— 后者会把「跟随系统」永久钉在第一次读到的值上。也**不用**
+     * `UiModeManager.getNightMode()`:手机用**定时深色**(如 22:00–07:00)时它返回
+     * 的是 `MODE_NIGHT_CUSTOM`/`AUTO` 而不是 `MODE_NIGHT_YES`,按它判断「跟随系统」
+     * + 定时深色会被定成浅色,启动图就和手机对不上 —— 之前那版就是这么错的。
+     * 系统资源的 uiMode 是定时计划落定后的实际档,跟手机状态栏看到的一致。
      */
     private fun systemIsDark(): Boolean {
-        val manager = getSystemService(UiModeManager::class.java) ?: return false
         return try {
-            manager.nightMode == UiModeManager.MODE_NIGHT_YES
+            val uiMode = Resources.getSystem().configuration.uiMode
+            (uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
         } catch (e: Exception) {
             Log.w(TAG, "读系统夜间模式失败,按浅色处理:$e")
             false
@@ -272,6 +279,16 @@ open class MainActivity : FlutterActivity() {
      * ([wantDark]),两边不会打架。
      */
     private fun syncLaunchEntry(stored: String?) {
+        // debug 构建不切入口:Android Studio / flutter run 每次都是显式
+        // `am start .../.LaunchLightActivity`(清单里第一个 LAUNCHER 组件)。
+        // 组件的启用状态会被 PackageManager 落盘,重装(`install -r`)也保留 ——
+        // 上一次在深色主题下离开,Light 就是禁用状态,下一次点运行就报
+        // "Activity class ...LaunchLightActivity does not exist"(Error type 3)。
+        // 开发期启动图本来就只看个大概,固定用 Light 那一档,release 才按主题切。
+        // 用 applicationInfo 的 debuggable 而不是 BuildConfig:AGP 8 起默认不再
+        // 生成 BuildConfig(本工程也没开 buildFeatures),引用它直接编译失败。
+        val debuggable = 0 != applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE
+        if (debuggable) return
         val dark = wantDark(stored ?: storedThemeMode(), systemIsDark())
         // 先开再关:两个 broadcast 之间至少留着一个图标,免得 launcher 那一瞬间把
         // 图标(以及用户桌面上的快捷方式)当成"应用没了"处理。
@@ -406,6 +423,9 @@ open class MainActivity : FlutterActivity() {
                         val mode = call.argument<String>("mode") ?: "system"
                         storeThemeMode(mode)
                         applyAppNightMode(mode)
+                        // 启动图看的是"启用了哪个启动入口",不是按应用夜间模式:
+                        // 这里不切,下次冷启动画的还是旧入口那一档。
+                        syncLaunchEntry(mode)
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -722,3 +742,4 @@ open class MainActivity : FlutterActivity() {
         return null
     }
 }
+

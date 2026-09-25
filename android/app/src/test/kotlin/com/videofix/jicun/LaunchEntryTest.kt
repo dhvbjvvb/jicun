@@ -1,4 +1,4 @@
-package com.videofix.jicun
+﻿package com.videofix.jicun
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -49,8 +49,9 @@ class LaunchEntryTest {
     @Test
     fun `应用 id 换了入口名也跟着换`() {
         assertEquals(
-            "top.videofix.jicun.LaunchDarkActivity",
-            launchEntryClass("top.videofix.jicun", dark = true),
+            "com.videofix.jicun.LaunchDarkActivity",
+            launchEntryClass("com.videofix.jicun", dark = true),
         )
     }
 }
+

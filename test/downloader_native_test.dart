@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:untitled/downloader.dart';
+import 'package:jicun/downloader.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

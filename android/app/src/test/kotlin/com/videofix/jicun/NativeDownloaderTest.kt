@@ -236,6 +236,22 @@ class NativeDownloaderTest {
     }
 
     @Test
+    fun `区间等于整条文件时接受 200`() {
+        // 微信视频号实测:2.5MB 的文件,Range: bytes=0-2497216 回 200 + 整条
+        assertTrue(wholeFileAsRange(200, 0, 2_497_216, 2_497_217))
+        // 同一区间回 206 是正常路,不走这条判据
+        assertFalse(wholeFileAsRange(206, 0, 2_497_216, 2_497_217))
+        // 起点不是 0:回 200 说明服务端把整条发过来了,按偏移写会写坏
+        assertFalse(wholeFileAsRange(200, 4_194_304, 8_388_607, 4_194_304))
+        // 长度对不上:整条文件比要的那一段长,同样不能按偏移写
+        assertFalse(wholeFileAsRange(200, 0, 4_194_303, 152_938_811))
+        // 不给 Content-Length(分块编码)时认不出长度,照旧判失败
+        assertFalse(wholeFileAsRange(200, 0, 2_497_216, -1))
+        // 服务端错误码不是这条路管的(4xx/5xx 由 httpError 抛)
+        assertFalse(wholeFileAsRange(403, 0, 2_497_216, 2_497_217))
+    }
+
+    @Test
     fun `单条文件不吃摊薄`() {
         assertEquals(32, lanesPerItem(32, 1))
         assertEquals(64, lanesPerItem(64, 1))
@@ -257,3 +273,4 @@ class NativeDownloaderTest {
         assertFalse(tries.noteFailure(1))
     }
 }
+

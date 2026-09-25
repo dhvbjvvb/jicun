@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Verify that the Android launch window matches the first Flutter frame.
 
 Why this exists: a cold start shows the Android launch window until Flutter
@@ -126,3 +126,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

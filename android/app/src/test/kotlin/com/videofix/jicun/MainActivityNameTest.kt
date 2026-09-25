@@ -1,4 +1,4 @@
-package com.videofix.jicun
+﻿package com.videofix.jicun
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -92,3 +92,4 @@ class MainActivityNameTest {
         )
     }
 }
+

@@ -123,6 +123,9 @@ const String _kUiScale = 'ui.scale';
 const String _kNotifyDownloadDone = 'notify.downloadDone';
 const String _kNotifyDownloadFailed = 'notify.downloadFailed';
 
+// 「自动粘贴并解析」页的开关:打开 APP 时自动粘贴剪贴板首条链接并解析。
+const String _kAutoPasteParse = 'clipboard.autoPasteParse';
+
 /// 用户点过「忽略」的那个版本。存的是版本号本身(如 `1.1.0`):
 /// 只有仓库又发了**更高**的版本才会再弹(见 [UpdateService.shouldPrompt])。
 const String _kIgnoredVersion = 'update.ignoredVersion';
@@ -306,6 +309,23 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   late bool _notifyDownloadDone;
   late bool _notifyDownloadFailed;
 
+  /// 进入 APP 自动粘贴剪贴板首条链接并解析。开关在「自动粘贴并解析」页里，默认开。
+  late bool _autoPasteParse;
+
+  /// 上一次自动粘贴解析过的链接。剪贴板没换内容时不再重复解析，
+  /// 免得每次从后台回来都重新打一次解析。
+  String? _lastAutoPasted;
+
+  /// 「读剪贴板」那一趟的兜底超时。计时器由页面自己拿着,dispose 时取消。
+  ///
+  /// 不能就地用 `Future.timeout`:那个计时器没人能取消,页面切走/销毁之后它还挂着
+  /// 700ms —— 测试里直接判失败(`A Timer is still pending even after the widget
+  /// tree was disposed`),真机上也只是白等一趟。
+  Timer? _clipboardDeadline;
+
+  /// 和 [_clipboardDeadline] 配对的那次等待。销毁时要把它也结束掉,否则 await 挂着。
+  Completer<String?>? _clipboardWait;
+
   // ── 检查更新 ──
   late final UpdateService _updates = widget.updates ?? UpdateService();
 
@@ -467,6 +487,72 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     await _startParse(entry.sourceUrl);
   }
 
+  /// 读剪贴板里的文字,读不到返回 null。
+  ///
+  /// **先问平台侧**:它走系统的 `coerceToText`,`text/html`(浏览器复制的链接)、
+  /// `text/uri-list`(相册/文件管理器复制的)这些都能读出来,而且会挨条找第一个
+  /// 有文字的项。Flutter 自带的 `Clipboard.getData` 只认 `text/plain`,那几类剪贴板
+  /// 明明有内容它却回 null —— APP 就会错报「剪贴板里没有内容」。
+  ///
+  /// 读空时停一下再问一次:刚切回前台那一下,系统偶尔还没把剪贴板交给应用。
+  /// 平台侧没有这个方法(测试、非 Android)才退回自带那条路。
+  ///
+  /// 平台侧卡住(系统剪贴板服务抽风)时不能把「粘贴」晾在那儿:700ms 到点就按
+  /// "读不到"收场,给用户一句明确的话,而不是点下去毫无反应。
+  ///
+  /// 计时器和等待都由页面自己拿着(见 [_clipboardDeadline] / [_clipboardWait]):
+  /// 页面销毁时两个一起收掉,不然会留下一个孤儿计时器。
+  Future<String?> _readClipboard() async {
+    final wait = Completer<String?>();
+    _clipboardDeadline?.cancel();
+    final timer = Timer(const Duration(milliseconds: 700), _finishClipboardRead);
+    _clipboardDeadline = timer;
+    _clipboardWait = wait;
+    try {
+      return await Future.any([_readClipboardInner(), wait.future]);
+    } finally {
+      // 只收自己那一次:两个入口(启动自动粘贴、用户点「粘贴」)撞在一起时,
+      // 别把对方刚起的计时器收掉。
+      if (_clipboardDeadline == timer) {
+        timer.cancel();
+        _clipboardDeadline = null;
+        _clipboardWait = null;
+      }
+    }
+  }
+
+  /// 把等待中的那次读剪贴板就地收场(超时到点、或页面销毁)。
+  ///
+  /// 必须把等待也结束掉:只取消计时器的话,`Future.any` 永远不返回,那个 await
+  /// 就挂在那儿不放了。
+  void _finishClipboardRead() {
+    final wait = _clipboardWait;
+    _clipboardWait = null;
+    if (wait != null && !wait.isCompleted) wait.complete(null);
+  }
+
+  /// 进入 APP 自动粘贴并解析剪贴板首条链接。
+  ///
+  /// 只读剪贴板里的第一条文本,挑出其中的分享链接:没有链接、开关关了、
+  /// 正在解析、或这条链接上次已经自动解析过,都直接跳过 —— 尤其是最后一条,
+  /// 否则每次从后台回来(比如去系统设置开个权限)都会重复打一次解析。
+  /// 读不到(系统拦截、剪贴板是空的)也什么都不做,不打扰用户。
+  Future<void> _maybeAutoPasteParse() async {
+    if (!_autoPasteParse || _parsing) return;
+    final text = await _readClipboard();
+    if (!mounted) return;
+    final url = text == null ? null : extractShareUrl(text);
+    if (url == null || url.isEmpty) return;
+    if (url == _lastAutoPasted) return;
+    _lastAutoPasted = url;
+    // 已经是这条且解析完了:不用再打一次。
+    if (_linkController.text.trim() == url && _parseLocked) return;
+    _unlockParse();
+    _selectTab(0);
+    _linkController.text = url;
+    await _startParse(url);
+  }
+
   /// 下载结束后的系统通知。发不出去(没权限、系统静音)就算了 ——
   /// 通知只是锦上添花,不能反过来影响下载本身。
   Future<void> notifyDownloadFinished({
@@ -516,6 +602,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     prefs.setDouble(_kUiScale, _uiScale);
     prefs.setBool(_kNotifyDownloadDone, _notifyDownloadDone);
     prefs.setBool(_kNotifyDownloadFailed, _notifyDownloadFailed);
+    prefs.setBool(_kAutoPasteParse, _autoPasteParse);
   }
 
   /// 把选好的主题模式同步给原生侧(Android 的**按应用夜间模式**)。
@@ -551,6 +638,8 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     // 通知开关默认都开:下载完不给个动静才是异常。
     _notifyDownloadDone = prefs?.getBool(_kNotifyDownloadDone) ?? true;
     _notifyDownloadFailed = prefs?.getBool(_kNotifyDownloadFailed) ?? true;
+    // 自动粘贴解析默认开:用户从别处复制链接回来就是想解析的。
+    _autoPasteParse = prefs?.getBool(_kAutoPasteParse) ?? true;
     _ignoredVersion = prefs?.getString(_kIgnoredVersion);
     // widget.prefs 为 null 时(widget 测试、或调用方没传)自己也去读一次。忽略状态
     // 读不到就等于"没忽略过",每次启动都会再弹一次 —— 这条不能只靠调用方传进来的
@@ -589,6 +678,13 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_askPermissionsOnFirstLaunch());
+    });
+
+    // 冷启动自动粘贴解析:用户在别处复制了链接再打开 APP,直接填进输入栏并解析。
+    // 等第一帧之后跑,别和启动抢帧;读剪贴板失败(系统拦截)就当没这回事。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_maybeAutoPasteParse());
     });
 
     // main() 里已经预读过就直接用;没预读(测试)才异步补一次。
@@ -635,6 +731,10 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // 剪贴板那一趟还在等平台侧回话:计时器和等待一起收掉,别留孤儿 timer。
+    _clipboardDeadline?.cancel();
+    _clipboardDeadline = null;
+    _finishClipboardRead();
     _linkController.dispose();
     _parseService.dispose();
     _updates.dispose();
@@ -920,7 +1020,11 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 只认"回到前台":跳系统设置页会先后台、再前台,权限就是在那儿开的。
-    if (state == AppLifecycleState.resumed) unawaited(_finishPendingInstall());
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_finishPendingInstall());
+      // 从别处复制链接后回到 APP:自动粘贴首条链接并解析(开关控制)。
+      unawaited(_maybeAutoPasteParse());
+    }
   }
 
   @override
@@ -1538,27 +1642,6 @@ String _settingsIcon(BuildContext context, String file) {
       ? '深色主题'
       : '浅色主题';
   return '$mode（设置板块选项图标）/$file';
-}
-
-/// 读剪贴板里的文字,读不到返回 null。
-///
-/// **先问平台侧**:它走系统的 `coerceToText`,`text/html`(浏览器复制的链接)、
-/// `text/uri-list`(相册/文件管理器复制的)这些都能读出来,而且会挨条找第一个
-/// 有文字的项。Flutter 自带的 `Clipboard.getData` 只认 `text/plain`,那几类剪贴板
-/// 明明有内容它却回 null —— APP 就会错报「剪贴板里没有内容」。
-///
-/// 读空时停一下再问一次:刚切回前台那一下,系统偶尔还没把剪贴板交给应用。
-/// 平台侧没有这个方法(测试、非 Android)才退回自带那条路。
-Future<String?> _readClipboard() async {
-  try {
-    return await _readClipboardInner().timeout(
-      const Duration(milliseconds: 700),
-    );
-  } on TimeoutException {
-    // 平台侧卡住(系统剪贴板服务抽风)时不能把「粘贴」晾在那儿:
-    // 到点就按"读不到"收场,给用户一句明确的话,而不是点下去毫无反应。
-    return null;
-  }
 }
 
 Future<String?> _readClipboardInner() async {
@@ -2342,7 +2425,7 @@ class _PasteLinkCard extends StatelessWidget {
   ///
   /// 读不到(系统拦下、或剪贴板本来就是空的)要说一句:点了毫无反应等于坏掉。
   Future<void> _paste(BuildContext context) async {
-    final text = await _readClipboard();
+    final text = await app._readClipboard();
     if (!context.mounted) return;
     if (text == null || text.trim().isEmpty) {
       _showInfo(
@@ -5003,7 +5086,8 @@ class _ApkDownloadCardState extends State<_ApkDownloadCard> {
 ///
 /// - 整圈浅色底,进度从 12 点整顺时针扫过,弧线是滚动的波浪(见 [_RingPainter]);
 /// - 圆心是**加粗百分比**,和弧的进度严格同一个值;
-/// - 下完(100%)时波浪闭合、不再爬,圆心换成绿色对勾。
+/// - 下完(100%)时波浪闭合、不再爬,圆心换成蓝渐变波浪徽章加白勾(见 [_ScallopBadge]);
+/// - 失败时圆心换成红渐变波浪徽章加白叉。
 class _ProgressRing extends StatefulWidget {
   const _ProgressRing({
     required this.progress,
@@ -5026,15 +5110,11 @@ class _ProgressRing extends StatefulWidget {
   /// 实际画的时候整块画布按 `diameter / 176` 缩放,这样只有一处尺寸可调。
   static const double designDiameter = 176;
 
-  /// 绿勾圆盘的直径(设计基准里),顶到波浪环**最里**的那一圈 —— 浪谷内缘:
-  /// 环半径 70、浪高 5.5、半线宽 7,浪谷内缘落在 57.5,所以圆盘 115。
-  /// 末尾多 2:往里压 1 个单位,盖住圆盘和环之间的抗锯齿缝,不然会有一圈虚边。
-  static const double innerDiameter =
-      2 *
-          (_RingPainter._radius -
-              _RingPainter._amplitude -
-              _RingPainter._stroke / 2) +
-      2;
+  /// 波浪徽章盘面的直径(设计基准里)。徽章要**深深压到进度环的笔触下面**:
+  /// 环笔触内缘 63、外缘 77(半径 70、半线宽 7),徽章半径取 70、起伏 5.5%,
+  /// 浪谷 66、浪峰 74 —— 全程藏在笔触底下 3 个单位以上,抗锯齿也吃不穿,
+  /// 缝里不可能露卡片底。相位和环对不对得上都无所谓,反正看不见交界。
+  static const double badgeDiameter = 140;
 
   @override
   State<_ProgressRing> createState() => _ProgressRingState();
@@ -5061,7 +5141,7 @@ class _ProgressRingState extends State<_ProgressRing>
   @override
   void initState() {
     super.initState();
-    if (widget.progress >= 1) _pop.value = 1;
+    if (widget.progress >= 1 || widget.failed) _pop.value = 1;
     _syncWave();
   }
 
@@ -5070,6 +5150,7 @@ class _ProgressRingState extends State<_ProgressRing>
     super.didUpdateWidget(oldWidget);
     setState(() => _shown = widget.progress);
     if (widget.progress >= 1 && oldWidget.progress < 1) _pop.forward(from: 0);
+    if (widget.failed && !oldWidget.failed) _pop.forward(from: 0);
     if (widget.progress < 1 && oldWidget.progress >= 1) _pop.value = 0;
     _syncWave();
   }
@@ -5105,6 +5186,9 @@ class _ProgressRingState extends State<_ProgressRing>
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // 圆心先画、圆环后画:完成/失败的徽章盘面要压进环的笔触底下,
+            // 缝里才不露卡片底。下载中圆心只是百分比文字,环盖不盖它都一样。
+            _center(value, done, scale),
             CustomPaint(
               size: Size.square(widget.diameter),
               painter: _RingPainter(
@@ -5122,34 +5206,23 @@ class _ProgressRingState extends State<_ProgressRing>
                         .withValues(alpha: 0.22),
               ),
             ),
-            _center(value, done, scale),
           ],
         ),
       ),
     );
   }
 
-  /// 圆心:没下完是加粗百分比,下完是实心绿圆加对勾。
+  /// 圆心:没下完是加粗百分比,下完是蓝渐变波浪徽章加白勾,失败是红渐变徽章加白叉。
   Widget _center(double value, bool done, double scale) {
+    final failed = widget.failed;
     final percent = '${(value * 100).round()}%';
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 260),
-      child: done
+      child: (done || failed)
           ? ScaleTransition(
-              key: const ValueKey('done'),
+              key: ValueKey(done ? 'done' : 'failed'),
               scale: CurvedAnimation(parent: _pop, curve: Curves.elasticOut),
-              child: Container(
-                width: _ProgressRing.innerDiameter * scale,
-                height: _ProgressRing.innerDiameter * scale,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xFF2BB673),
-                ),
-                // 对勾自己画:字体图标的字重改不了,要「又大又粗」只能走路径
-                child: CustomPaint(
-                  painter: const _CheckPainter(color: Color(0xFFFFFFFF)),
-                ),
-              ),
+              child: _ScallopBadge(scale: scale, failed: failed),
             )
           : Text(
               percent,
@@ -5168,7 +5241,132 @@ class _ProgressRingState extends State<_ProgressRing>
   }
 }
 
-/// 绿盘里那个白对勾。
+/// 完成/失败的波浪徽章:谷歌 Play 下载完成那种边缘起伏的圆盘。
+///
+/// - 边缘是正弦起伏的闭合圆(14 道浪,和外圈进度环同数,看着是一家人),
+///   起伏约半径的 7%,和参考图里那圈圆润的波浪同量级;
+/// - 盘面**藏进进度环的笔触底下**(见 [badgeDiameter]),和环叠在一起才是一整块,
+///   中间没有任何露底的缝;
+/// - 盘面渐变和进度弧**同一配方**(深 → 亮,横向),叠放处色调连得上;
+///   完成走品牌蓝,失败走红;
+/// - 中央符号是粗白勾 / 粗白叉,和参考图同字重。
+class _ScallopBadge extends StatelessWidget {
+  const _ScallopBadge({required this.scale, required this.failed});
+
+  final double scale;
+  final bool failed;
+
+  /// 边缘起伏的瓣数。12 瓣 + 小起伏 = 圆润的花瓣,瓣数越多齿越尖
+  /// (斜率 ≈ 瓣数 × 起伏,之前 14 瓣 × 7% 真机上像齿轮)。
+  /// 和外圈进度环瓣数不一样没关系:交界藏在环底下,看不见。
+  static const int lobes = 12;
+
+  /// 起伏幅度占半径的比例。5.5% 配 12 瓣,圆润和参考图同量级。
+  static const double ripple = 0.055;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = failed
+        ? const Color(0xFFE5484D)
+        : const Color(0xFF2F6BFF);
+    // 和进度弧同一配方(见 _RingPainter 的 shader):徽章压在环底下,
+    // 配方不一致的话叠放处会断色。
+    const deep = Color(0xFF001F6B);
+    const light = Color(0xFFFFFFFF);
+    final d = _ProgressRing.badgeDiameter * scale;
+    return SizedBox(
+      width: d,
+      height: d,
+      child: CustomPaint(
+        painter: _ScallopFill(
+          stops: <Color>[
+            Color.lerp(base, deep, 0.45)!,
+            Color.lerp(base, light, 0.15)!,
+          ],
+        ),
+        foregroundPainter: failed
+            ? const _CrossPainter(color: Color(0xFFFFFFFF))
+            : const _CheckPainter(color: Color(0xFFFFFFFF)),
+      ),
+    );
+  }
+}
+
+/// 波浪徽章的盘面:起伏圆填渐变。
+class _ScallopFill extends CustomPainter {
+  const _ScallopFill({required this.stops});
+
+  /// 对角渐变的上、下两档(见 [_ScallopBadge])。
+  final List<Color> stops;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.shortestSide / 2;
+    final center = Offset(size.width / 2, size.height / 2);
+    final path = Path();
+    const step = math.pi / 180;
+    for (var deg = 0; deg <= 360; deg++) {
+      final angle = deg * step;
+      final rr =
+          r *
+          (1 +
+              _ScallopBadge.ripple *
+                  math.sin(_ScallopBadge.lobes * angle));
+      final point = Offset(
+        center.dx + rr * math.sin(angle),
+        center.dy - rr * math.cos(angle),
+      );
+      if (deg == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    path.close();
+    // 横向渐变,和进度弧的 shader 同方向同配方:徽章压在环底下,
+    // 两边的色调在叠放处连得上,不会断色。
+    canvas.drawPath(
+      path,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(0, size.height / 2),
+          Offset(size.width, size.height / 2),
+          stops,
+        ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ScallopFill old) => old.stops != stops;
+}
+
+/// 徽章中央符号的线宽 = 盘子直径的这个比例。勾和叉共用:15% 已经挺粗了,
+/// 再粗折角就开始糊在一起。
+const double _badgeGlyphStrokeRatio = 0.15;
+
+/// 失败徽章里的白叉,和 [_CheckPainter] 同字重。
+class _CrossPainter extends CustomPainter {
+  const _CrossPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = s * _badgeGlyphStrokeRatio
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    canvas.drawLine(Offset(s * 0.32, s * 0.32), Offset(s * 0.68, s * 0.68), paint);
+    canvas.drawLine(Offset(s * 0.68, s * 0.32), Offset(s * 0.32, s * 0.68), paint);
+  }
+
+  @override
+  bool shouldRepaint(_CrossPainter old) => old.color != color;
+}
+
+/// 波浪徽章里那个白对勾(见 [_ScallopBadge])。
 ///
 /// 不用图标字体:`CupertinoIcons.check_mark` 的字重是定死的,要「又大又粗」
 /// 只能自己画。折线按 0~1 的相对坐标定,盘子多大都合用。
@@ -5176,9 +5374,6 @@ class _CheckPainter extends CustomPainter {
   const _CheckPainter({required this.color});
 
   final Color color;
-
-  /// 线宽 = 盘子直径的这个比例。15% 已经挺粗了,再粗两个折角就开始糊在一起。
-  static const double _strokeRatio = 0.15;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -5191,7 +5386,7 @@ class _CheckPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = size.shortestSide * _strokeRatio
+        ..strokeWidth = size.shortestSide * _badgeGlyphStrokeRatio
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..color = color,
@@ -5237,9 +5432,12 @@ class _RingPainter extends CustomPainter {
   final Color trackColor;
 
   /// 圆环中心线半径、线宽、浪高。都按 176 的基准定。
+  ///
+  /// 浪高 4:浪太高齿就尖了,参考图里是圆润的起伏。斜率 ≈ 浪高 × 浪数 ÷ 半径,
+  /// 取 0.8 左右齿形圆,之前 5.5 那版斜率 1.1,真机上看着像齿轮。
   static const double _radius = 70;
   static const double _stroke = 14;
-  static const double _amplitude = 5.5;
+  static const double _amplitude = 4;
 
   /// 整圈的浪数。整数:整圈才闭得上。14 道 = 176 基准下 31 个单位一个波长,
   /// 换成 dp 约 23dp —— 和谷歌那支波浪进度条的波长同量级。
@@ -5815,6 +6013,7 @@ class _SettingsPage extends StatelessWidget {
   static const _options = <_SettingsOption>[
     _SettingsOption('主题与外观', '修改主题、显示效果'),
     _SettingsOption('通知管理与下载', '通知管理与存储位置', icon: '通知管理'),
+    _SettingsOption('自动粘贴并解析', '剪贴板首条链接自动解析', icon: '通知管理'),
     // 检查更新是当场就办事的,没有下一级页面,所以不给箭头。
     _SettingsOption('检查更新', '点击检查最新版本', showChevron: false),
     _SettingsOption('使用帮助及反馈', '查看使用帮助或提交反馈', icon: '帮助及联系反馈'),
@@ -5867,6 +6066,13 @@ class _SettingsPage extends StatelessWidget {
         _SubPageRoute<void>(
           builder: (_) => _NotificationManagementPage(app: app),
         ),
+      );
+      return;
+    }
+
+    if (title == '自动粘贴并解析') {
+      Navigator.of(context).push(
+        _SubPageRoute<void>(builder: (_) => _AutoPastePage(app: app)),
       );
       return;
     }
@@ -6111,6 +6317,52 @@ class _NotificationManagementPageState
               ),
               const SizedBox(height: 24),
               _StorageLocationCard(isDark: isDark),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「设置 → 自动粘贴并解析」的二级页。
+///
+/// 只有一张开关卡,样式与「通知管理与下载」页同一套
+/// (_GlassPanel + _GoogleSwitchRow,同一张顶栏图):打开后,每次进入 APP
+/// 都会把剪贴板首条链接自动填进输入栏并解析(见 `_maybeAutoPasteParse`)。
+class _AutoPastePage extends StatelessWidget {
+  const _AutoPastePage({required this.app});
+
+  final _LiquidGlassDemoState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final headerHeight = MediaQuery.sizeOf(context).width / _kHeaderArtAspect;
+    final headerBottom = headerHeight * 564 / 605;
+
+    return _SubPage(
+      title: '自动粘贴并解析',
+      headerImage: 'assets/theme-header/theme_top_2.png',
+      child: _GoogleSurface(
+        brightness: isDark ? Brightness.dark : Brightness.light,
+        child: SafeArea(
+          child: ListView(
+            physics: const _ShortBounceScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
+            children: [
+              _GlassPanel(
+                isDark: isDark,
+                child: _GoogleSwitchRow(
+                  isDark: isDark,
+                  title: '进入APP自动粘贴并解析首条链接',
+                  subtitle: '从其他平台复制链接后,打开即自动解析',
+                  value: app._autoPasteParse,
+                  onChanged: (value) => app.applySetting(
+                    () => app._autoPasteParse = value,
+                  ),
+                ),
+              ),
             ],
           ),
         ),

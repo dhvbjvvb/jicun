@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:untitled/history_store.dart';
-import 'package:untitled/parse_service.dart';
+import 'package:jicun/history_store.dart';
+import 'package:jicun/parse_service.dart';
 
 const String _link = 'https://v.douyin.com/abcd/';
 

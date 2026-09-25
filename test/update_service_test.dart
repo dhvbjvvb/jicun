@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:untitled/update_service.dart';
+import 'package:jicun/update_service.dart';
 
 /// 造一份 release JSON,默认带一个 `jicun-<版本>.apk` 资产。
 Map<String, dynamic> _release({

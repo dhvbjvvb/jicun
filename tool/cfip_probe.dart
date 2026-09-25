@@ -5,8 +5,8 @@
 // 用完就删,不进 App 逻辑。
 import 'dart:io';
 
-import 'package:untitled/api_host.dart';
-import 'package:untitled/preferred_ip.dart';
+import 'package:jicun/api_host.dart';
+import 'package:jicun/preferred_ip.dart';
 
 Future<void> main() async {
   // 先走一遍生产路径的「拉配置」:桌面没有 SharedPreferences(缓存那步在 main.dart

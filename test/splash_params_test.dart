@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -293,3 +293,4 @@ String _locked(String what) =>
     '红了不是功能坏了,是启动图被改了:故意的就把本文件里对应的那条期望值一起改掉,'
     '不是故意的就把那次改动退回去。改完记得跑 '
     '`flutter test test/splash_params_test.dart test/splash_asset_test.dart`。';
+

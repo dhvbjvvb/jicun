@@ -1,8 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:untitled/main.dart';
-import 'package:untitled/widgets/animated_tab_icon.dart';
+import 'package:jicun/main.dart';
+import 'package:jicun/widgets/animated_tab_icon.dart';
 
 /// 用真实资源(未选中24x24-SVG/解析.svg)驱动,确保 asset 路径与 pubspec 一致。
 const _asset = '未选中24x24-SVG/解析.svg';

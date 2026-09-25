@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-import 'package:untitled/downloader.dart';
+import 'package:jicun/downloader.dart';
 
 /// `saveAll` 会去问临时目录。这里直接把平台实现换掉,而不是启动
 /// `TestWidgetsFlutterBinding` —— 那个 binding 一装上,整个套件里的 HttpClient

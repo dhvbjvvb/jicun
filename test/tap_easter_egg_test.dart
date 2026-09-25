@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:untitled/widgets/tap_easter_egg.dart';
+import 'package:jicun/widgets/tap_easter_egg.dart';
 
 void main() {
   group('TapRally', () {

@@ -1,4 +1,4 @@
-"""Drive the theme radio through the app's own UI, then grab the next cold start.
+﻿"""Drive the theme radio through the app's own UI, then grab the next cold start.
 
 Everything the app does between the tap and the kill is its own code path — the
 same one a finger takes. Prints the splash colours of the relaunch.
@@ -79,3 +79,4 @@ for mode in sys.argv[1:]:
     time.sleep(1.5)
     log = [l.split("Jicun   : ")[-1].strip() for l in adb("shell", "logcat", "-d").splitlines() if "Jicun" in l]
     print(f"  日志 {log[:1]}")
+

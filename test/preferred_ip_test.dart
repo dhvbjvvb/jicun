@@ -5,8 +5,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:untitled/api_host.dart';
-import 'package:untitled/preferred_ip.dart';
+import 'package:jicun/api_host.dart';
+import 'package:jicun/preferred_ip.dart';
 
 void main() {
   group('race', () {

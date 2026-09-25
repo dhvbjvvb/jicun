@@ -91,6 +91,24 @@ internal fun shouldRotateConnection(
 ): Boolean = start >= 0 && written < wanted && elapsedMs >= budgetMs
 
 /**
+ * 带 Range 的请求回 200 时,这条响应是不是**就是我们要的那一段**。
+ *
+ * 服务端可以忽略 Range 直接回 200 + 整条文件(RFC 7233),那种响应按偏移写会写坏,
+ * 所以默认判失败。但区间本来就等于整条文件时(起点 0、长度也对得上),200 的内容正是
+ * 要的那一段,没有写坏的可能。
+ *
+ * 实测微信视频号的 `finder.video.qq.com`:`Range: bytes=0-<size-1>` 回 200 而不是
+ * 206,而 8MB 以下的文件走的正是"一个区间铺满整条"这条路 —— 小视频因此永远报
+ * 「分段下载被拒 0-2497216」,解析出来也下不动。
+ */
+internal fun wholeFileAsRange(
+    code: Int,
+    start: Long,
+    end: Long,
+    contentLength: Long,
+): Boolean = code == 200 && start == 0L && end >= 0 && contentLength == end + 1
+
+/**
  * 服务端明确回的错误状态码。
  *
  * 和网络层的 [IOException] 分开,是因为重试的意义完全不同:连接被重置值得再试,
@@ -738,8 +756,10 @@ class NativeDownloader(private val channel: MethodChannel) {
                 conn.setRequestProperty("Range", "bytes=$start-$end")
             }
             val code = conn.responseCode
-            // 服务端不认 Range 会回 200 + 整个文件,那样按偏移写会写坏,直接判失败。
-            if (start >= 0 && code != 206) {
+            // 服务端不认 Range 会回 200 + 整个文件,那样按偏移写会写坏,直接判失败;
+            // 回的这一整条正好就是要的那一段时另算(见 [wholeFileAsRange])。
+            val wholeFile = wholeFileAsRange(code, start, end, conn.contentLengthLong)
+            if (start >= 0 && code != 206 && !wholeFile) {
                 throw httpError(code, " (分段下载被拒 $start-$end)")
             }
             if (code != 200 && code != 206) throw httpError(code)
@@ -860,3 +880,4 @@ class NativeDownloader(private val channel: MethodChannel) {
 
     private var lastReport = 0L
 }
+

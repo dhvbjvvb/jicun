@@ -1,4 +1,4 @@
-"""Stress the "pick a mode, kill the app at once, relaunch" race.
+﻿"""Stress the "pick a mode, kill the app at once, relaunch" race.
 
 Runs the app's own radio through several light/dark flips, killing the process
 immediately after each pick, and reports the splash colour of the relaunch
@@ -91,3 +91,4 @@ for round_no, mode in enumerate(("深色", "浅色", "深色", "浅色"), start=
     print(f"[{round_no}] 点 {picked} -> 偏好 {prefs_mode()}")
     print(f"      启动帧 {frames}")
     print(f"      日志 {log[:1]}")
+

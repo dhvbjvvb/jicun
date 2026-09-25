@@ -1,4 +1,4 @@
-"""Pick 深色 / 浅色 in the app and read back what the next cold start saw."""
+﻿"""Pick 深色 / 浅色 in the app and read back what the next cold start saw."""
 
 import re
 import subprocess
@@ -89,3 +89,4 @@ for mode in ("深色", "浅色", "深色"):
     boot()
     table = open_radio()
     print("  卡片值", [k for k in table if k.startswith("系统主题")])
+

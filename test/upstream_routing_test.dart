@@ -17,10 +17,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:untitled/api_host.dart';
-import 'package:untitled/downloader.dart';
-import 'package:untitled/main.dart';
-import 'package:untitled/parse_service.dart';
+import 'package:jicun/api_host.dart';
+import 'package:jicun/downloader.dart';
+import 'package:jicun/main.dart';
+import 'package:jicun/parse_service.dart';
 
 import 'fixtures/upstream_real_responses.dart';
 

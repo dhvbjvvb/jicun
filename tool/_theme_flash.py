@@ -1,4 +1,4 @@
-"""Watch what the screen does while the theme radio is tapped.
+﻿"""Watch what the screen does while the theme radio is tapped.
 
 Records the app during the tap and reports the colour at two points (a page
 corner and the middle of the screen) per frame, so a splash flashing back over
@@ -90,3 +90,4 @@ for png in sorted(frames.glob("f_*.png")):
     if edge != prev:
         print(f"  {png.name} edge={edge} mid={mid}")
         prev = edge
+

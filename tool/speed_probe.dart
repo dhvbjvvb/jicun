@@ -3,7 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:untitled/downloader.dart';
+import 'package:jicun/downloader.dart';
 
 Future<void> main(List<String> args) async {
   const share = 'https://v.douyin.com/iGYPHTC5mTQ/';

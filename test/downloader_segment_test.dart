@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:untitled/downloader.dart';
+import 'package:jicun/downloader.dart';
 
 /// 一个假的 CDN:认 Range,回 206。用来证明大文件真的走了分段并行,
 /// 而且是**并发**在拉 —— 单连接串行也能拼出正确结果,所以光看文件内容不够。

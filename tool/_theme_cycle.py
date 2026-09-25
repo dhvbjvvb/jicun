@@ -1,4 +1,4 @@
-"""Pick 浅色 / 深色 in 设置 → 主题与外观 → 系统主题 and sample the splash each way."""
+﻿"""Pick 浅色 / 深色 in 设置 → 主题与外观 → 系统主题 and sample the splash each way."""
 
 import re
 import subprocess
@@ -72,3 +72,4 @@ for mode in ("深色", "浅色"):
     seen = [l.split("Jicun   : ")[-1].strip() for l in log.splitlines() if "Jicun" in l]
     print(f"  冷启动帧 {frames}")
     print(f"  日志 {seen[:2]}")
+

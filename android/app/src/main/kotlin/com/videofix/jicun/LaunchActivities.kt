@@ -1,4 +1,4 @@
-package com.videofix.jicun
+﻿package com.videofix.jicun
 
 /**
  * 两个**启动入口**:一个主题一档。
@@ -37,3 +37,4 @@ fun wantDark(storedMode: String?, systemNight: Boolean): Boolean = when (storedM
     "light" -> false
     else -> systemNight
 }
+
