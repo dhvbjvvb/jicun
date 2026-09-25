@@ -53,6 +53,11 @@ import 'api_host.dart';
 import 'ui/notifications.dart';
 import 'ui/prefs.dart';
 import 'ui/playback.dart';
+import 'ui/motion.dart';
+import 'ui/icons.dart';
+import 'ui/clipboard.dart';
+import 'ui/widgets.dart';
+import 'ui/palette.dart';
 
 /// 拉服务端下发的域名表与优选 IP 并落盘。
 ///
@@ -385,7 +390,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     _clipboardDeadline = timer;
     _clipboardWait = wait;
     try {
-      return await Future.any([_readClipboardInner(), wait.future]);
+      return await Future.any([readClipboardInner(), wait.future]);
     } finally {
       // 只收自己那一次:两个入口(启动自动粘贴、用户点「粘贴」)撞在一起时,
       // 别把对方刚起的计时器收掉。
@@ -980,7 +985,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
               child: MediaQuery(
                 data: MediaQueryData.fromView(View.of(context))
                     .removePadding(removeTop: true),
-                child: _ThemeBackground(
+                child: ThemeBackground(
                   isDark: isDark,
                   child: const SizedBox.expand(),
                 ),
@@ -1195,7 +1200,7 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
     final bool isSelected = index == selected;
     // 选中项压在中性磨砂上,得用前景色;白图标压白磨砂等于没画。未选中沿用底栏那套中性色。
     final Color color = isSelected
-        ? _settingsPalette(isDark).foreground
+        ? settingsPalette(isDark).foreground
         : (isDark ? const Color(0xFF9A9AA0) : const Color(0xFF8A8A8E));
     return Center(
       child: Column(
@@ -1227,446 +1232,12 @@ class _LiquidGlassDemoState extends State<LiquidGlassDemo>
   }
 }
 
-class _ThemeBackground extends StatelessWidget {
-  const _ThemeBackground({
-    required this.isDark,
-    required this.child,
-    this.tag = '?',
-  });
-
-  final bool isDark;
-  final Widget child;
-  final String tag;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isDark) {
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF000000), Color(0xFF434343)],
-          ),
-        ),
-        child: child,
-      );
-    }
-
-    return CustomPaint(
-      painter: const _LightThemeBackgroundPainter(),
-      child: child,
-    );
-  }
-}
-
-class _LightThemeBackgroundPainter extends CustomPainter {
-  const _LightThemeBackgroundPainter();
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    canvas.drawRect(rect, Paint()..color = const Color(0xFFCDDCDC));
-
-    final linearShader = const LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0x40FFFFFF), Color(0x40000000)],
-    ).createShader(rect);
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = linearShader
-        ..blendMode = BlendMode.overlay,
-    );
-
-    final center = Offset(size.width * 0.5, size.height);
-    final radius = math.sqrt(
-      size.width * size.width * 0.25 + size.height * size.height,
-    );
-    final radialShader = RadialGradient(
-      center: Alignment(
-        (center.dx / size.width) * 2 - 1,
-        (center.dy / size.height) * 2 - 1,
-      ),
-      radius: radius / size.height,
-      colors: const [Color(0x80FFFFFF), Color(0x80000000)],
-    ).createShader(rect);
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = radialShader
-        ..blendMode = BlendMode.screen,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _LightThemeBackgroundPainter oldDelegate) =>
-      false;
-}
-
-/// 比 Cupertino 默认更「收」的越界回弹。
-///
-/// 越界拖动走多远由 `frictionFactor` 决定(正常档起始 0.52):值越小,同样的手指
-/// 位移越走不动。这里砍掉一半 —— 松手后那点回弹还在,但不会再甩出去一大截,
-/// 手指也不用拖很远才回到边界。
-class _ShortBounceScrollPhysics extends BouncingScrollPhysics {
-  const _ShortBounceScrollPhysics({super.parent});
-
-  /// 必须重写。Scrollable 会把这里的 physics 和全局滚动物理合并
-  /// (`physicsFromWidget.applyTo(configuration)`),而
-  /// `BouncingScrollPhysics.applyTo` 返回的是一个**新的 BouncingScrollPhysics** ——
-  /// 不重写的话这个子类会被悄悄换掉,阻力改了个寂寞。
-  @override
-  _ShortBounceScrollPhysics applyTo(ScrollPhysics? ancestor) =>
-      _ShortBounceScrollPhysics(parent: buildParent(ancestor));
-
-  /// 内容不满一屏时也要能拖。默认物理在这种情况下直接拒收拖动
-  /// (`shouldAcceptUserOffset` 在 min==max==0 时返回 false),刚进「主题与外观」
-  /// 就是这个状态 —— 手指下去毫无反应,展开一张卡把内容撑高了才突然有回弹。
-  /// 这里跟 AlwaysScrollableScrollPhysics 一样放开,越界那点回弹始终在。
-  @override
-  bool shouldAcceptUserOffset(ScrollMetrics position) => true;
-
-  @override
-  double frictionFactor(double overscrollFraction) =>
-      super.frictionFactor(overscrollFraction) * 0.5;
-}
-
-/// 「点开滑出 / 再点缩回」那套伸缩回弹的规格。系统主题卡与首页三张预览卡共用
-/// 同一份,两处的开合手感才一致。
-///
-/// 展开比收起慢:一次性滑出一整块内容,太快像被弹开。
-const Duration _kRevealExpand = Duration(milliseconds: 460);
-
-/// 收起稍快一点更利落,但同样留回弹。
-const Duration _kRevealCollapse = Duration(milliseconds: 420);
-
-/// 回弹要留在**末尾**:曲线前半段匀速铺开,最后冲到目标高度上面一点再落回来
-/// (easeOutBack 那种形状是前段猛冲、末尾慢慢蹭,看着就是「一下就完了」)。
-const Curve _kRevealExpandCurve = Cubic(0.35, 0.30, 0.45, 1.25);
-
-/// 收起的回弹只能做成「先往回涨一点再缩」—— 高度没法缩得比标题行还短。
-/// 这里让曲线前三分之一下探(箱子先涨 ~9%),再一路收到 0。
-const Curve _kRevealCollapseCurve = Cubic(0.70, -0.50, 0.40, 1.0);
-
-/// 靠高度做伸缩的「滑出/缩回」盒子。
-///
-/// 内容一直挂在树上,收起时只是被裁掉 —— 否则收起那一瞬间内容就没了,只剩一段
-/// 空白在收,看着就是「啪一下贴到底」。展开:曲线冲过目标高度再收回,落到底那下
-/// 是回弹。收起:曲线开头先往回一点(anticipation),箱子先微微涨一下再缩回去。
-class _Reveal extends StatelessWidget {
-  const _Reveal({required this.expanded, required this.child});
-
-  final bool expanded;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      excluding: !expanded,
-      child: IgnorePointer(
-        ignoring: !expanded,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: expanded ? 1 : 0),
-          duration: expanded ? _kRevealExpand : _kRevealCollapse,
-          curve: expanded ? _kRevealExpandCurve : _kRevealCollapseCurve,
-          builder: (context, t, child) => ClipRect(
-            child: Align(
-              alignment: Alignment.topCenter,
-              heightFactor: t < 0 ? 0 : t,
-              child: child,
-            ),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-/// 卡片右侧那个「展开/收起」箭头,转半圈。曲线与时长跟 [_Reveal] 同一份。
-class _RevealChevron extends StatelessWidget {
-  const _RevealChevron({required this.expanded, required this.color});
-
-  final bool expanded;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedRotation(
-      turns: expanded ? 0.5 : 0,
-      duration: expanded ? _kRevealExpand : _kRevealCollapse,
-      // 回弹曲线:箭头会稍微转过头再落回来
-      curve: expanded ? _kRevealExpandCurve : _kRevealCollapseCurve,
-      child: Icon(CupertinoIcons.chevron_down, size: 18, color: color),
-    );
-  }
-}
-
-/// 解析成功后每张预览卡的入场:淡入 + 上浮 16px。
-///
-/// 三张卡共用一条时间线,靠 [Interval] 错开(`index` 越大越晚),所以不需要
-/// 定时器、也不会出现「谁先谁后」的帧间抖动。系统「减弱动态效果」时直接给终态。
-class _StaggerIn extends StatefulWidget {
-  const _StaggerIn({
-    required this.index,
-    required this.show,
-    required this.child,
-  });
-
-  /// 第几张(从 0 起),决定入场顺序。
-  final int index;
-
-  final bool show;
-  final Widget child;
-
-  @override
-  State<_StaggerIn> createState() => _StaggerInState();
-}
-
-class _StaggerInState extends State<_StaggerIn>
-    with SingleTickerProviderStateMixin {
-  static const Duration _motion = Duration(milliseconds: 560);
-
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: _motion,
-    // 已经可见时(例如热重载、从别的 tab 切回来)直接是终态,不补播
-    value: widget.show ? 1 : 0,
-  );
-
-  late final Animation<double> _progress = CurvedAnimation(
-    parent: _controller,
-    curve: Interval(
-      // 第 0 张立刻走,之后每张晚 22% 的时间线(≈120ms)
-      (widget.index * 0.22).clamp(0.0, 0.7),
-      1,
-      curve: Curves.easeOutCubic,
-    ),
-  );
-
-  @override
-  void didUpdateWidget(_StaggerIn oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.show == oldWidget.show) return;
-    if (widget.show) {
-      _controller.forward(from: 0);
-    } else {
-      // 收回去时不播:外层 [_Reveal] 正在把高度收回,卡片再自己淡出会看着重影
-      _controller.value = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 只要 disableAnimations 这一个 aspect:MediaQuery.of 会把键盘 insets 的
-    // 变化也算成依赖,白白重建一次。
-    if (MediaQuery.disableAnimationsOf(context)) return widget.child;
-    return AnimatedBuilder(
-      animation: _progress,
-      child: widget.child,
-      builder: (context, child) => Opacity(
-        opacity: _progress.value,
-        child: Transform.translate(
-          offset: Offset(0, (1 - _progress.value) * 16),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-/// 板块图标目录:每个板块一套浅色、一套深色,按当前主题取。
-String _boardIcon(BuildContext context, String board, String file) {
-  final mode = CupertinoTheme.of(context).brightness == Brightness.dark
-      ? '深色模式'
-      : '浅色模式';
-  return '$mode$board/$file';
-}
-
-/// 首页板块(解析页)的图标。
-String _homeIcon(BuildContext context, String file) =>
-    _boardIcon(context, '首页板块22x22-SVG', file);
-
-/// 历史板块的图标。
-String _historyIcon(BuildContext context, String file) =>
-    _boardIcon(context, '历史板块', file);
-
-/// 下载进度弹窗的图标。
-///
-/// 这套目录的名字是「下载二次弹窗**浅色模式**」—— 模式在后缀,与其它板块
-/// (「浅色模式首页板块…」)正好相反,所以不能走 [_boardIcon],得单独拼。
-String _popupIcon(BuildContext context, String file) {
-  final mode = CupertinoTheme.of(context).brightness == Brightness.dark
-      ? '深色模式'
-      : '浅色模式';
-  return '下载二次弹窗$mode/$file';
-}
-
-/// 设置板块图标目录里的图标。
-///
-/// 弹窗也用这一套:为一句提示再单独画一张图不值当,而且这些图标本来就只有浅深
-/// 两份,和弹窗的取色规则完全一样。
-String _settingsIcon(BuildContext context, String file) {
-  final mode = CupertinoTheme.of(context).brightness == Brightness.dark
-      ? '深色主题'
-      : '浅色主题';
-  return '$mode（设置板块选项图标）/$file';
-}
-
-Future<String?> _readClipboardInner() async {
-  // 先走自带那条:纯文本它又快又准,而绝大多数时候剪贴板里就是纯文本。
-  var text = await _engineClipboardText();
-  if (!_hasText(text)) {
-    final native = await _nativeClipboardText();
-    text = native.text;
-    // 平台侧明明有这个方法却读空 → 可能是刚切回前台、系统还没把剪贴板交接过来,
-    // 等一下再问一次。问不出来(测试、非 Android)就别白等这一下。
-    if (native.available && !_hasText(text)) {
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      text = (await _nativeClipboardText()).text;
-    }
-  }
-  debugPrint('[clip] text=${text?.length ?? -1}');
-  return _hasText(text) ? text : null;
-}
-
-bool _hasText(String? text) => text != null && text.trim().isNotEmpty;
-
-/// 平台侧读剪贴板。
-///
-/// [available] 为假 = 这个方法根本不存在(测试、非 Android)。
-/// 一次最多等 [_kClipboardReadTimeout]:真机实测 3~20ms,卡住的平台调用不能把
-/// 「粘贴」这颗按钮晾在那儿。
-Future<({bool available, String? text})> _nativeClipboardText() async {
-  try {
-    final text = await Downloader.channel
-        .invokeMethod<String>('getClipboardText')
-        .timeout(_kClipboardReadTimeout, onTimeout: () => null);
-    return (available: true, text: text);
-  } catch (_) {
-    return (available: false, text: null);
-  }
-}
-
-const Duration _kClipboardReadTimeout = Duration(milliseconds: 300);
-
-/// Flutter 自带那条:只认 `text/plain`,当作最后的兜底。
-Future<String?> _engineClipboardText() async {
-  try {
-    return (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-  } catch (_) {
-    return null;
-  }
-}
-
-/// 卡片左侧那个圆角图标块。一级设置卡与首页卡片共用同一规格,两级观感才一致。
-class _GlassIconChip extends StatelessWidget {
-  const _GlassIconChip({required this.isDark, required this.asset});
-
-  final bool isDark;
-  final String asset;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 42,
-      height: 42,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0x2EFFFFFF) : const Color(0x80FFFFFF),
-        borderRadius: BorderRadius.circular(13),
-      ),
-      // 20 而非资源的 22:图形在 22x22 画布里顶满,按原尺寸画会贴住圆角块。
-      child: TintedSvgIcon(
-        asset,
-        size: 20,
-        color: _settingsPalette(isDark).foreground,
-      ),
-    );
-  }
-}
-
-/// 卡片里的标题 + 副标题。首页与设置页共用,字号字重只有这一份。
-class _CardHeadline extends StatelessWidget {
-  const _CardHeadline({
-    required this.isDark,
-    required this.title,
-    required this.subtitle,
-    this.subtitleMaxLines = 1,
-  });
-
-  // 字号与行高只写这一遍:历史卡要靠它们算出「四行」到底多高。
-  static const double _titleSize = 17;
-  static const double _titleLineHeight = 1.2;
-  static const double _subtitleSize = 13;
-  static const double _subtitleLineHeight = 1.25;
-  static const double _gap = 3;
-
-  /// 标题两行 + 间隔 + 副标题两行的总高。
-  ///
-  /// 历史卡把右侧文字区锁成这个高度:标题长短差一行,卡片就会一张高一张矮,
-  /// 列表看着参差不齐。
-  static const double fourLineHeight =
-      _titleSize * _titleLineHeight * 2 +
-      _gap +
-      _subtitleSize * _subtitleLineHeight * 2;
-
-  final bool isDark;
-  final String title;
-  final String subtitle;
-
-  /// 副标题行数。默认一行 —— 设置页那一列卡片的高度是量过的,不能自己长高。
-  /// 历史卡例外:那里要放下「时间 · 平台 · 类型」,一行只有约 15 个字。
-  final int subtitleMaxLines;
-
-  @override
-  Widget build(BuildContext context) {
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
-      isDark,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: foreground,
-            fontSize: _titleSize,
-            fontWeight: FontWeight.w600,
-            height: _titleLineHeight,
-          ),
-        ),
-        const SizedBox(height: _gap),
-        Text(
-          subtitle,
-          maxLines: subtitleMaxLines,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: secondary,
-            fontSize: _subtitleSize,
-            height: _subtitleLineHeight,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// 「解析」首页:一张窄的粘贴卡 + 若干张预览卡,单列排布。
 /// 卡片样式与间距全部沿用一级设置列表(_GlassPanel / 20 边距 / 12 间距),
 /// 只有内容不同 —— 首页比设置页多一块「预览区 + 底部动作按钮」。
 ///
 /// 预览卡默认**不显示**:没解析出东西之前,它们只是几块空骨架,摆在那里既没
-/// 信息也占满一屏。只有解析成功后它们才逐张入场(见 [_StaggerIn]),
+/// 信息也占满一屏。只有解析成功后它们才逐张入场(见 [StaggerIn]),
 /// 而且只显示这次真解析出来的内容(见 [_PreviewKind.forResult])。
 ///
 /// 状态全部挂在 [_LiquidGlassDemoState] 上,这里只是把那份状态画出来 ——
@@ -1686,7 +1257,7 @@ class _ParsePage extends StatelessWidget {
         : _PreviewKind.forResult(parsed);
     final showPreviews = parsed != null && kinds.isNotEmpty;
     return ListView(
-      physics: const _ShortBounceScrollPhysics(),
+      physics: const ShortBounceScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, _kBoardHeaderTop, 20, 120),
       children: [
         const _BoardHeader(title: '解析'),
@@ -1696,9 +1267,9 @@ class _ParsePage extends StatelessWidget {
           const SizedBox(height: 10),
           _ErrorNotice(message: app._parseError!, isDark: isDark),
         ],
-        // 入场分两层:外层 [_Reveal] 把列表高度撑开(带系统主题卡那套回弹),
+        // 入场分两层:外层 [Reveal] 把列表高度撑开(带系统主题卡那套回弹),
         // 内层每张卡各自淡入上浮、错开一拍。所以不是「啪」一下弹出来。
-        _Reveal(
+        Reveal(
           expanded: showPreviews,
           child: Column(
             children: [
@@ -1708,7 +1279,7 @@ class _ParsePage extends StatelessWidget {
                   padding: EdgeInsets.only(
                     bottom: entry.key == kinds.length - 1 ? 0 : 12,
                   ),
-                  child: _StaggerIn(
+                  child: StaggerIn(
                     index: entry.key,
                     show: showPreviews,
                     child: _PreviewCard(
@@ -1886,12 +1457,12 @@ class _HistoryPageState extends State<_HistoryPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     // 列表在根 State 上,这里只读
     final entries = widget.app._historyEntries;
     final list = entries ?? const <HistoryEntry>[];
     return ListView(
-      physics: const _ShortBounceScrollPhysics(),
+      physics: const ShortBounceScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, _kBoardHeaderTop, 20, 120),
       children: [
         _BoardHeader(
@@ -1900,7 +1471,7 @@ class _HistoryPageState extends State<_HistoryPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _PillAction(
-                asset: _historyIcon(context, '选择.svg'),
+                asset: historyIcon(context, '选择.svg'),
                 label: '选择',
                 active: _selecting,
                 // 没有记录可挑时按钮是灰的
@@ -1908,7 +1479,7 @@ class _HistoryPageState extends State<_HistoryPage> {
               ),
               const SizedBox(width: 8),
               _PillAction(
-                asset: _historyIcon(context, '全选.svg'),
+                asset: historyIcon(context, '全选.svg'),
                 label: '全选',
                 // 只有进了选择模式,全选才有意义 —— 没进之前是灰的。
                 // 进了之后点一次全选中,再点一次全部取消(选中态看 _allSelected)。
@@ -1919,7 +1490,7 @@ class _HistoryPageState extends State<_HistoryPage> {
               ),
               const SizedBox(width: 8),
               _PillAction(
-                asset: _historyIcon(context, '删除.svg'),
+                asset: historyIcon(context, '删除.svg'),
                 label: '删除',
                 destructive: true,
                 // 一个都没选就删不了
@@ -2017,7 +1588,7 @@ class _PillAction extends StatelessWidget {
     this.destructive = false,
   });
 
-  /// 已经解析好的资源路径(用 [_historyIcon] / [_homeIcon] 拼)。
+  /// 已经解析好的资源路径(用 [historyIcon] / [homeIcon] 拼)。
   final String asset;
   final String label;
   final VoidCallback? onTap;
@@ -2037,7 +1608,7 @@ class _PillAction extends StatelessWidget {
         : (isDark ? const Color(0xFF5AA9FF) : const Color(0xFF1257C9));
     final Color foreground = enabled
         ? color
-        : _settingsPalette(isDark).secondary.withValues(alpha: 0.45);
+        : settingsPalette(isDark).secondary.withValues(alpha: 0.45);
     // 这两颗按钮不在玻璃卡里,得自己当 Material 宿主 —— _PlainTap 是 InkWell,
     // 找不到 Material 祖先会直接断言失败。
     return Material(
@@ -2109,10 +1680,10 @@ class _HistoryCard extends StatelessWidget {
               Expanded(
                 // 右侧文字区锁成「标题两行 + 副标题两行」的高度。
                 // 不锁的话标题占一行还是两行会把卡片撑成两种高度,列表参差不齐。
-                // 高度由 _CardHeadline 自己的字号行高算出来,不写死数字。
+                // 高度由 CardHeadline 自己的字号行高算出来,不写死数字。
                 child: SizedBox(
-                  height: _CardHeadline.fourLineHeight,
-                  child: _CardHeadline(
+                  height: CardHeadline.fourLineHeight,
+                  child: CardHeadline(
                     isDark: isDark,
                     // 标题为空的情况少见(接口会用正文兜底),但真出现时
                     // 留一张没有名字的卡比留个空字符串好。
@@ -2132,7 +1703,7 @@ class _HistoryCard extends StatelessWidget {
 }
 
 /// 卡片左端那个勾选圈。只在选择模式下出现 —— 出现/消失走和卡片展开同一套曲线,
-/// 靠宽度伸缩(和 [_Reveal] 是一个路子,只是方向横过来)。
+/// 靠宽度伸缩(和 [Reveal] 是一个路子,只是方向横过来)。
 class _SelectDot extends StatelessWidget {
   const _SelectDot({
     required this.visible,
@@ -2149,11 +1720,11 @@ class _SelectDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = isDark ? const Color(0xFF5AA9FF) : const Color(0xFF1257C9);
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: visible ? 1 : 0),
-      duration: visible ? _kRevealExpand : _kRevealCollapse,
-      curve: visible ? _kRevealExpandCurve : _kRevealCollapseCurve,
+      duration: visible ? kRevealExpand : kRevealCollapse,
+      curve: visible ? kRevealExpandCurve : kRevealCollapseCurve,
       builder: (context, t, child) => ClipRect(
         child: Align(
           alignment: Alignment.centerLeft,
@@ -2246,7 +1817,7 @@ class _CoverSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     final url = coverUrl;
     // 按屏幕物理像素给解码尺寸:别解一张全尺寸图再缩
     final cacheWidth = (width * MediaQuery.devicePixelRatioOf(context)).round();
@@ -2328,7 +1899,7 @@ class _PasteLinkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     final bool hasLink = app._linkController.text.trim().isNotEmpty;
@@ -2356,13 +1927,13 @@ class _PasteLinkCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                _GlassIconChip(
+                GlassIconChip(
                   isDark: isDark,
-                  asset: _homeIcon(context, '粘贴链接.svg'),
+                  asset: homeIcon(context, '粘贴链接.svg'),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
-                  child: _CardHeadline(
+                  child: CardHeadline(
                     isDark: isDark,
                     title: '粘贴链接',
                     subtitle: '粘贴平台分享链接',
@@ -2376,14 +1947,14 @@ class _PasteLinkCard extends StatelessWidget {
                   children: [
                     _PillAction(
                       key: const ValueKey('pasteLink.paste'),
-                      asset: _homeIcon(context, '粘贴.svg'),
+                      asset: homeIcon(context, '粘贴.svg'),
                       label: '粘贴',
                       onTap: () => _paste(context),
                     ),
                     const SizedBox(height: 6),
                     _PillAction(
                       key: const ValueKey('pasteLink.clear'),
-                      asset: _homeIcon(context, '清空.svg'),
+                      asset: homeIcon(context, '清空.svg'),
                       label: '清空',
                       // 没内容就没得清:灰着,且吃掉点击
                       onTap: hasLink ? _clear : null,
@@ -2426,7 +1997,7 @@ class _PasteLinkCard extends StatelessWidget {
               onPressed: canStart ? _start : null,
               // 图标颜色不写死:交给 FilledButton 注入的 IconTheme,
               // 深浅两套 ColorScheme 的前景色(含 M3 深色模式的深蓝 onPrimary)都跟得上。
-              icon: TintedSvgIcon(_homeIcon(context, '开始解析.svg'), size: 20),
+              icon: TintedSvgIcon(homeIcon(context, '开始解析.svg'), size: 20),
               label: Text(label),
             ),
           ],
@@ -2497,7 +2068,7 @@ enum _PreviewKind {
 /// 一张预览卡。
 ///
 /// 每张卡自己管开合:点标题行滑出/缩回预览区,手感与「系统主题」卡同一套曲线
-/// (见 [_Reveal])。默认展开 —— 首页第一眼就该看到三块预览,而不是三个折叠条。
+/// (见 [Reveal])。默认展开 —— 首页第一眼就该看到三块预览,而不是三个折叠条。
 class _PreviewCard extends StatefulWidget {
   const _PreviewCard({
     super.key,
@@ -2508,7 +2079,7 @@ class _PreviewCard extends StatefulWidget {
 
   final _PreviewKind kind;
 
-  /// 解析结果。null 时三块内容区都还是骨架(外层 _Reveal 这时也不会展开)。
+  /// 解析结果。null 时三块内容区都还是骨架(外层 Reveal 这时也不会展开)。
   final ParseResult? result;
 
   /// 根 State。下载结束要发系统通知,而开关在「通知管理与下载」页里、存在根 State 上。
@@ -2848,7 +2419,7 @@ class _PreviewCardState extends State<_PreviewCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     // 解析结果换了就把选中清掉(同一条链接内点选不受影响)
     _syncItems(_items(widget.result));
     final selectable = _needsSelection(widget.result);
@@ -2866,13 +2437,13 @@ class _PreviewCardState extends State<_PreviewCard> {
               padding: const EdgeInsets.fromLTRB(16, 13, 14, 13),
               child: Row(
                 children: [
-                  _GlassIconChip(
+                  GlassIconChip(
                     isDark: isDark,
-                    asset: _homeIcon(context, widget.kind.icon),
+                    asset: homeIcon(context, widget.kind.icon),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                    child: _CardHeadline(
+                    child: CardHeadline(
                       isDark: isDark,
                       title: widget.kind.title,
                       subtitle: _subtitle(widget.result),
@@ -2889,12 +2460,12 @@ class _PreviewCardState extends State<_PreviewCard> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  _RevealChevron(expanded: _expanded, color: secondary),
+                  RevealChevron(expanded: _expanded, color: secondary),
                 ],
               ),
             ),
           ),
-          _Reveal(
+          Reveal(
             expanded: _expanded,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -2977,7 +2548,7 @@ class _PreviewStage extends StatelessWidget {
   Widget build(BuildContext context) {
     // 占位底:比卡片玻璃再深/浅一档,把内容区和标题区分开
     final fill = isDark ? const Color(0x1FFFFFFF) : const Color(0x12000000);
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     final parsed = result;
@@ -3122,7 +2693,7 @@ class _CopyStageState extends State<_CopyStage> {
 
   @override
   Widget build(BuildContext context) {
-    final Color foreground = _settingsPalette(widget.isDark).foreground;
+    final Color foreground = settingsPalette(widget.isDark).foreground;
     final fill = widget.isDark
         ? const Color(0x1FFFFFFF)
         : const Color(0x12000000);
@@ -3261,7 +2832,7 @@ class _GalleryStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     final fill = isDark ? const Color(0x1FFFFFFF) : const Color(0x12000000);
 
     if (entries.isEmpty) {
@@ -3289,7 +2860,7 @@ class _GalleryStage extends StatelessWidget {
           height: _tileHeight,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            physics: const _ShortBounceScrollPhysics(),
+            physics: const ShortBounceScrollPhysics(),
             padding: EdgeInsets.zero,
             itemCount: entries.length,
             separatorBuilder: (_, _) => const SizedBox(width: 8),
@@ -3361,7 +2932,7 @@ class _GalleryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     final accent = isDark ? const Color(0xFF5AA9FF) : const Color(0xFF1257C9);
     final fill = isDark ? const Color(0x1FFFFFFF) : const Color(0x12000000);
 
@@ -3508,7 +3079,7 @@ class _ImageViewerDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     final fill = isDark ? const Color(0x1FFFFFFF) : const Color(0x12000000);
     final screenHeight = MediaQuery.sizeOf(context).height;
     // 图片占屏幕的 58%,再留 200 给头部、关闭按钮和面板内边距 —— 横屏或小屏上
@@ -3517,7 +3088,7 @@ class _ImageViewerDialog extends StatelessWidget {
 
     return _PopupShell(
       title: '图片预览',
-      icon: _homeIcon(context, '图集预览.svg'),
+      icon: homeIcon(context, '图集预览.svg'),
       // 比普通提示卡宽:300 宽的面板里那张图只剩 272,看不出"大图"
       maxWidth: 380,
       onClose: () => Navigator.of(context).pop(),
@@ -3630,7 +3201,7 @@ class _PlaybackRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     final accent = isDark ? const Color(0xFF5AA9FF) : const Color(0xFF1257C9);
     final total = duration;
 
@@ -3955,7 +3526,7 @@ class _VideoStageState extends State<_VideoStage> {
   @override
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     final controller = _controller;
 
     if (controller == null || _failed) {
@@ -4294,7 +3865,7 @@ class _CardActionButton extends StatelessWidget {
       ),
       onPressed: onPressed,
       // 颜色跟着上面的 foregroundColor 走,不写死
-      icon: TintedSvgIcon(_homeIcon(context, icon), size: 20),
+      icon: TintedSvgIcon(homeIcon(context, icon), size: 20),
       label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
@@ -4441,10 +4012,10 @@ class _DownloadProgressCardState extends State<_DownloadProgressCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     return _PopupShell(
       title: '下载进度',
-      icon: _popupIcon(context, '下载进度.svg'),
+      icon: popupIcon(context, '下载进度.svg'),
       // 不给关闭叉:窗口只能靠下面的「取消下载 / 完成」收,
       // 免得下载中手一滑把窗口关掉、以为下载也停了。
       child: Column(
@@ -4578,12 +4149,12 @@ class _UpdateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     return _PopupShell(
       title: '版本更新',
-      icon: _popupIcon(context, '下载进度.svg'),
+      icon: popupIcon(context, '下载进度.svg'),
       onClose: () => _close(context),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -4889,7 +4460,7 @@ class _ApkDownloadCardState extends State<_ApkDownloadCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     final controller = widget.controller;
@@ -4899,7 +4470,7 @@ class _ApkDownloadCardState extends State<_ApkDownloadCard> {
 
     return _PopupShell(
       title: widget.title,
-      icon: _popupIcon(context, '下载进度.svg'),
+      icon: popupIcon(context, '下载进度.svg'),
       onClose: _close,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -5444,7 +5015,7 @@ class _PopupShell extends StatelessWidget {
 
   final String title;
 
-  /// 完整资源路径(用 [_settingsIcon] / [_popupIcon] 拼)。
+  /// 完整资源路径(用 [settingsIcon] / [popupIcon] 拼)。
   final String icon;
 
   /// 头部右侧的关闭叉。null = 不给叉:必须点下面的按钮才能走。
@@ -5458,7 +5029,7 @@ class _PopupShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     return Stack(
@@ -5477,11 +5048,11 @@ class _PopupShell extends StatelessWidget {
               constraints: BoxConstraints(maxWidth: maxWidth),
               // 玻璃面板**不自己铺底**:它直接透过上面那层模糊采样页面本身。
               //
-              // 原来这里铺了一整屏 _ThemeBackground(为了和页面同色),结果是两件事
+              // 原来这里铺了一整屏 ThemeBackground(为了和页面同色),结果是两件事
               // 一起坏:
               // 1. 割裂 —— 卡片里透出来的是"重新画了一遍、没被糊过"的渐变,而卡片
               //    外面是被模糊+压暗的页面,同一屏两套明度,边上就是一条缝;
-              // 2. 白花帧 —— 浅色模式那层是 _LightThemeBackgroundPainter:整屏三次
+              // 2. 白花帧 —— 浅色模式那层是 LightThemeBackgroundPainter:整屏三次
               //    drawRect,带 BlendMode.overlay / screen 和一个径向渐变。它叠在
               //    12 sigma 的整屏模糊底下,弹层每帧都要重算一遍,换来的只是上面
               //    那条缝。
@@ -5637,7 +5208,7 @@ class _PopupSecondaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     return OutlinedButton(
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(40),
@@ -5701,11 +5272,11 @@ class _GlassDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final foreground = _settingsPalette(isDark).foreground;
+    final foreground = settingsPalette(isDark).foreground;
     return _PopupShell(
       title: title,
       // 没点名要哪张图就用「检查更新」:用上这个弹窗的地方多半和检查更新有关
-      icon: icon ?? _settingsIcon(context, '检查更新.svg'),
+      icon: icon ?? settingsIcon(context, '检查更新.svg'),
       onClose: () => Navigator.of(context).pop(false),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -5754,16 +5325,16 @@ class _QualityPickerDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     return _PopupShell(
       title: '选择清晰度',
       // 用首页板块那套图标:`下载媒体.svg` 只在「浅色/深色模式首页板块22x22-SVG/」
-      // 里,设置板块那套没有它。写成 _settingsIcon 会抛
+      // 里,设置板块那套没有它。写成 settingsIcon 会抛
       // "Unable to load asset: 深色主题（设置板块选项图标）/下载媒体.svg" ——
       // 弹窗照常显示,但控制台每次刷一屏未捕获异常(真机实测)。
-      icon: _homeIcon(context, '下载媒体.svg'),
+      icon: homeIcon(context, '下载媒体.svg'),
       onClose: () => Navigator.of(context).pop(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -5900,7 +5471,7 @@ class _SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      physics: const _ShortBounceScrollPhysics(),
+      physics: const ShortBounceScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, _kBoardHeaderTop, 20, 120),
       children: [
         const _BoardHeader(title: '设置'),
@@ -6012,12 +5583,12 @@ class _SettingsOptionCard extends StatelessWidget {
   final bool busy;
 
   String _iconPath(BuildContext context) =>
-      _settingsIcon(context, '${option.icon ?? option.title}.svg');
+      settingsIcon(context, '${option.icon ?? option.title}.svg');
 
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
 
     // 手写模糊面板。库的 GlassCard 无论走着色器路径、还是嵌套时的 vibrancy fill
     // 路径,都会在边界画一道高光:实测上沿 1 设备像素亮线(76 vs 内部 12),
@@ -6033,10 +5604,10 @@ class _SettingsOptionCard extends StatelessWidget {
         children: [
           // 尺寸 20 而非资源的 24:图形在 24x24 画布里没有留白,
           // 按 24 渲染会顶满圆角块,20 才是正常呼吸感。
-          _GlassIconChip(isDark: isDark, asset: _iconPath(context)),
+          GlassIconChip(isDark: isDark, asset: _iconPath(context)),
           const SizedBox(width: 14),
           Expanded(
-            child: _CardHeadline(
+            child: CardHeadline(
               isDark: isDark,
               title: option.title,
               subtitle: option.subtitle,
@@ -6099,7 +5670,7 @@ class _NotificationManagementPageState
           context,
           '通知权限未开启',
           '请在系统设置中允许即存发送通知。',
-          icon: _settingsIcon(context, '通知管理.svg'),
+          icon: settingsIcon(context, '通知管理.svg'),
         );
         return;
       }
@@ -6123,7 +5694,7 @@ class _NotificationManagementPageState
           context,
           '通知权限未开启',
           '请在系统设置中允许即存发送通知。',
-          icon: _settingsIcon(context, '通知管理.svg'),
+          icon: settingsIcon(context, '通知管理.svg'),
         );
         return;
       }
@@ -6159,7 +5730,7 @@ class _NotificationManagementPageState
         brightness: isDark ? Brightness.dark : Brightness.light,
         child: SafeArea(
           child: ListView(
-            physics: const _ShortBounceScrollPhysics(),
+            physics: const ShortBounceScrollPhysics(),
             padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
             children: [
               _GlassPanel(
@@ -6224,7 +5795,7 @@ class _AutoPastePage extends StatelessWidget {
         brightness: isDark ? Brightness.dark : Brightness.light,
         child: SafeArea(
           child: ListView(
-            physics: const _ShortBounceScrollPhysics(),
+            physics: const ShortBounceScrollPhysics(),
             padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
             children: [
               _GlassPanel(
@@ -6298,7 +5869,7 @@ const double _kHeaderArtAspect = 1406 / 605;
 /// 往里加:这张卡就是用户拿去对「为什么这条解析不出来」的凭据,写多了等于骗人。
 /// 上游能力见 parse_service.dart 的平台枚举与各家实测注释。
 ///
-/// [tutorial] 卡里默认收起,点一下才滑出来(见 [_Reveal])。
+/// [tutorial] 卡里默认收起,点一下才滑出来(见 [Reveal])。
 class _PlatformCardInfo {
   const _PlatformCardInfo(
     this.name,
@@ -6378,7 +5949,7 @@ class _HelpFeedbackPage extends StatelessWidget {
         brightness: isDark ? Brightness.dark : Brightness.light,
         child: SafeArea(
           child: ListView(
-            physics: const _ShortBounceScrollPhysics(),
+            physics: const ShortBounceScrollPhysics(),
             padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
             children: [
               _FeedbackChannelsCard(isDark: isDark),
@@ -6450,7 +6021,7 @@ class _CopyableRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     return _PlainTap(
@@ -6489,7 +6060,7 @@ class _CopyableRow extends StatelessWidget {
 
 /// 一张平台卡:左边商店图标,右边平台名 + 支持解析的内容,点开滑出教程。
 ///
-/// 伸缩(时长、曲线、箭头)与「主题与外观」那三张卡共用 [_Reveal] / [_RevealChevron],
+/// 伸缩(时长、曲线、箭头)与「主题与外观」那三张卡共用 [Reveal] / [RevealChevron],
 /// 手感一致。
 class _PlatformCard extends StatefulWidget {
   const _PlatformCard({required this.isDark, required this.info});
@@ -6508,7 +6079,7 @@ class _PlatformCardState extends State<_PlatformCard> {
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
     final info = widget.info;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
 
     return _GlassPanel(
       isDark: isDark,
@@ -6531,7 +6102,7 @@ class _PlatformCardState extends State<_PlatformCard> {
                         Text(
                           info.name,
                           style: TextStyle(
-                            color: _settingsPalette(isDark).foreground,
+                            color: settingsPalette(isDark).foreground,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -6549,7 +6120,7 @@ class _PlatformCardState extends State<_PlatformCard> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _RevealChevron(expanded: _expanded, color: secondary),
+                  RevealChevron(expanded: _expanded, color: secondary),
                 ],
               ),
             ),
@@ -6558,7 +6129,7 @@ class _PlatformCardState extends State<_PlatformCard> {
           // 自己的 RenderBox 还是原尺寸,量不到「收起=0」。
           KeyedSubtree(
             key: ValueKey('platformTutorial.${info.name}'),
-            child: _Reveal(
+            child: Reveal(
               expanded: _expanded,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
@@ -6670,7 +6241,7 @@ class _AboutAppPage extends StatelessWidget {
           child: Stack(
             children: [
               ListView(
-                physics: const _ShortBounceScrollPhysics(),
+                physics: const ShortBounceScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
                 children: [
                   _AboutInfoCard(
@@ -6736,7 +6307,7 @@ class _AboutInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     // RichText 而不是 Text.rich:标题和内容一个色号、只差字重,拆成两段 Span
@@ -6808,7 +6379,7 @@ class _EasterEggHintPage extends StatelessWidget {
           child: Stack(
             children: [
               ListView(
-                physics: const _ShortBounceScrollPhysics(),
+                physics: const ShortBounceScrollPhysics(),
                 // 底部留出底衬的高度 + 32:滚动到底时卡片不会被角色盖住。
                 padding: EdgeInsets.fromLTRB(20, 18, 20, artHeight + 32),
                 children: [_EggHintCard(isDark: isDark)],
@@ -6867,7 +6438,7 @@ class _EggHintCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (foreground: _, secondary: secondary) = _settingsPalette(isDark);
+    final (foreground: _, secondary: secondary) = settingsPalette(isDark);
     return _GlassPanel(
       isDark: isDark,
       child: Column(
@@ -6896,9 +6467,9 @@ class _EggHintCard extends StatelessWidget {
 
 /// 二级页统一外壳。
 ///
-/// 关键:背景必须由**全屏**的 _ThemeBackground 来画。直接用
-/// CupertinoPageScaffold(child: _ThemeBackground(...)) 时,child 从导航栏下方
-/// 才开始布局,于是顶部露出 scaffold 的纯色 #CDDCDC,而且 _ThemeBackground 里
+/// 关键:背景必须由**全屏**的 ThemeBackground 来画。直接用
+/// CupertinoPageScaffold(child: ThemeBackground(...)) 时,child 从导航栏下方
+/// 才开始布局,于是顶部露出 scaffold 的纯色 #CDDCDC,而且 ThemeBackground 里
 /// 的渐变是按更小的矩形重算的 —— 同一屏幕位置的颜色就和主页面对不上。
 /// 这里改成:背景铺满全屏 + scaffold 与导航栏透明,和主页面完全一致。
 class _SubPage extends StatelessWidget {
@@ -6946,7 +6517,7 @@ class _SubPage extends StatelessWidget {
             // RepaintBoundary:背景是静态的(只依赖 isDark),缓存成一层纹理后
             // 转场时只需重新合成,不必每帧重跑全屏 BlendMode.overlay/screen。
             child: RepaintBoundary(
-              child: _ThemeBackground(
+              child: ThemeBackground(
                 isDark: isDark,
                 tag: 'subpage',
                 child: const SizedBox.expand(),
@@ -7065,7 +6636,7 @@ class _ThemeModeCardState extends State<_ThemeModeCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
 
     return _GlassPanel(
       isDark: isDark,
@@ -7089,12 +6660,12 @@ class _ThemeModeCardState extends State<_ThemeModeCard> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  _RevealChevron(expanded: _expanded, color: secondary),
+                  RevealChevron(expanded: _expanded, color: secondary),
                 ],
               ),
             ),
           ),
-          _Reveal(
+          Reveal(
             expanded: _expanded,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -7167,7 +6738,7 @@ class _ThemeAppearancePage extends StatelessWidget {
         brightness: isDark ? Brightness.dark : Brightness.light,
         child: SafeArea(
           child: ListView(
-            physics: const _ShortBounceScrollPhysics(),
+            physics: const ShortBounceScrollPhysics(),
             padding: EdgeInsets.fromLTRB(20, headerBottom + 5, 20, 32),
             children: [
               _ThemeModeCard(app: app, isDark: isDark),
@@ -7186,7 +6757,7 @@ class _ThemeAppearancePage extends StatelessWidget {
 /// 「底栏外观样式」卡:两个开关都只作用于底栏,所以合成一张。
 ///
 /// 展开/收起与「系统主题」卡同一套(收起时只留一行标题 + 当前样式 + 箭头,
-/// 点开向下滑出,见 [_Reveal])。
+/// 点开向下滑出,见 [Reveal])。
 class _BarAppearanceCard extends StatefulWidget {
   const _BarAppearanceCard({required this.app, required this.isDark});
 
@@ -7204,7 +6775,7 @@ class _BarAppearanceCardState extends State<_BarAppearanceCard> {
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
     final app = widget.app;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
 
     return _GlassPanel(
       isDark: isDark,
@@ -7229,12 +6800,12 @@ class _BarAppearanceCardState extends State<_BarAppearanceCard> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  _RevealChevron(expanded: _expanded, color: secondary),
+                  RevealChevron(expanded: _expanded, color: secondary),
                 ],
               ),
             ),
           ),
-          _Reveal(
+          Reveal(
             expanded: _expanded,
             child: Column(
               children: [
@@ -7289,7 +6860,7 @@ class _UiScaleCardState extends State<_UiScaleCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
-    final secondary = _settingsPalette(isDark).secondary;
+    final secondary = settingsPalette(isDark).secondary;
     return _GlassPanel(
       isDark: isDark,
       child: Column(
@@ -7312,12 +6883,12 @@ class _UiScaleCardState extends State<_UiScaleCard> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  _RevealChevron(expanded: _expanded, color: secondary),
+                  RevealChevron(expanded: _expanded, color: secondary),
                 ],
               ),
             ),
           ),
-          _Reveal(
+          Reveal(
             expanded: _expanded,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -7518,12 +7089,6 @@ class _GlassPanel extends StatelessWidget {
   }
 }
 
-/// 前景/次要文字色。一级列表与二级页共用同一套,两级观感才不会分家。
-({Color foreground, Color secondary}) _settingsPalette(bool isDark) => (
-  foreground: isDark ? const Color(0xFFF5F7FA) : const Color(0xFF1B2430),
-  secondary: isDark ? const Color(0xFFADB7C5) : const Color(0xFF6E7887),
-);
-
 class _GoogleCardTitle extends StatelessWidget {
   const _GoogleCardTitle({required this.isDark, required this.text});
 
@@ -7535,7 +7100,7 @@ class _GoogleCardTitle extends StatelessWidget {
     return Text(
       text,
       style: TextStyle(
-        color: _settingsPalette(isDark).foreground,
+        color: settingsPalette(isDark).foreground,
         fontSize: 16,
         fontWeight: FontWeight.w600,
       ),
@@ -7559,7 +7124,7 @@ class _GoogleValueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     return Padding(
@@ -7638,7 +7203,7 @@ class _GoogleSwitchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final (foreground: foreground, secondary: secondary) = _settingsPalette(
+    final (foreground: foreground, secondary: secondary) = settingsPalette(
       isDark,
     );
     return Padding(
@@ -7715,7 +7280,7 @@ class _GoogleChoiceRow<T> extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: _settingsPalette(isDark).foreground,
+                color: settingsPalette(isDark).foreground,
                 fontSize: 16,
               ),
             ),
