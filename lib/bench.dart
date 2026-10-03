@@ -54,7 +54,10 @@ class DownloadBench {
       // "没传"的哨兵值,单独传 `--ei bench_segments 24` 会被当成没传。
       final dlSegments = (raw['dlSegments'] as num?)?.toInt() ?? -1;
       if (dlSegments > 0) {
-        Downloader.maxSegments = dlSegments;
+        // 参数对象不可变,所以整个换一份新的(调完分段数以外的都照旧)。
+        appDownloader = Downloader(
+          tuning: appDownloader.tuning.copyWith(maxSegments: dlSegments),
+        );
         _log('下载器分段数临时设为 $dlSegments(本次进程有效)');
       }
       if (seq.isNotEmpty) {

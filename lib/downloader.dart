@@ -12,6 +12,7 @@ import 'download_logic.dart';
 import 'failure.dart';
 import 'media_date.dart';
 
+part 'download_config.dart';
 part 'download_naming.dart';
 part 'download_publish.dart';
 part 'download_transport.dart';
@@ -71,7 +72,7 @@ class DownloadItem {
   /// **下载途中会被改**:解析期只能按 URL 猜后缀(见 lib/pages/preview.dart 的
   /// `imageExt`),
   /// 而头条的直链以 `~tplv-tt-large.image` 结尾,猜出来的后缀和真实格式无关。收到
-  /// 响应头/文件头之后由 `_retag` 改成真实格式,`publishImpl` 再拿它当
+  /// 响应头/文件头之后由 `_retag` 改成真实格式,`publish` 再拿它当
   /// MediaStore 的 `DISPLAY_NAME` —— 所以这里必须可变,只改临时文件的名字等于没改。
   String fileName;
 
@@ -141,6 +142,32 @@ class DownloadCancelled implements Exception {
 /// 或某条连接太慢时从断点接回去,见 NativeDownloader 的 ChunkAttempts / resumeOffset。
 /// 两条不是一回事:一条说的是进程被杀了以后,一条说的是这一趟还在跑的时候。
 class Downloader {
+  /// 造一份下载器。
+  ///
+  /// [deps] 给的是收流 / 落盘 / 写标签 / 盖日期 / 撤销这五步的实现(默认是真的,见
+  /// [DownloadDeps]);[useDartEngine] 让收流走 Dart(见 [saveAll])。
+  Downloader({
+    this.tuning = const DownloadTuning(),
+    DownloadDeps deps = const DownloadDeps(),
+    this.useDartEngine = false,
+  }) : deps = useDartEngine ? deps.withDateStamp(_skipDateStamp) : deps;
+
+  /// 这一份下载器的参数。那几个数字原来是静态字段,现在按份给(见 [DownloadTuning])。
+  final DownloadTuning tuning;
+
+  /// 收流 / 落盘 / 写标签 / 盖日期 / 撤销这五步(见 [DownloadDeps])。
+  final DownloadDeps deps;
+
+  /// 收流交给 Dart 做,不走原生。
+  ///
+  /// **只给测试用**:widget 测试不能真发网络请求、也不该真往相册里写,所以换一份
+  /// [deps] 再打开这个开关 —— 走这条路时原生侧一行都不碰。
+  ///
+  /// 这条路上**不盖日期**:testWidgets 用的是假时钟,真实文件 I/O 的 Future 推不动,
+  /// `await` 下去 pumpAndSettle 直接超时。这个判断原来写在盖日期那一步里按当时的
+  /// 静态开关做,现在收在构造这一行 —— 五步的调用形状就到哪里都一样了。
+  final bool useDartEngine;
+
   static const MethodChannel _channel = MethodChannel('jicun/downloader');
 
   /// 平台通道。下载器自己用,应用内更新(APK 安装)也借它 —— 同一个通道上多挂
@@ -150,7 +177,7 @@ class Downloader {
   /// 一条最多等多久没有任何数据。卡住的连接靠它超时,不然圆环会永远停在那里。
   static const Duration _idleTimeout = Duration(seconds: 30);
 
-  /// 是否有原生下载任务在跑。
+  /// 是否有原生下载任务在跑(每份下载器一个;应用里只有一份,见 [appDownloader])。
   ///
   /// [nativeDownload] 的进度回调是**通道级全局**的(dnProgress / dnDone 都不带任务
   /// id —— 理由见 handler 里那段说明),所以同一时刻只能有一个任务在飞。生产代码
@@ -160,7 +187,7 @@ class Downloader {
   /// **不是 `assert`**:带上它的那版只在调试构建里成立,release 上这个约束等于没
   /// 有 —— 而进度串了不会崩,只会让用户看到一个往回跳的百分比,那是最难查的一类
   /// 问题。代价只有一次 bool 判断。
-  static bool _inFlight = false;
+  bool _inFlight = false;
 
   /// 每个分类自定义的目录。空 = 走默认的媒体库路径(见 [MediaKind.folder])。
   ///
@@ -172,7 +199,7 @@ class Downloader {
   ///
   /// 原生侧见 MainActivity 的 `pickFolder`:返回 `{uri, label}`,并把
   /// takePersistableUriPermission 做掉(重启后还能写)。
-  static Future<StorageTarget?> pickFolder() async {
+  Future<StorageTarget?> pickFolder() async {
     final res = await _channel.invokeMapMethod<String, Object?>('pickFolder');
     if (res == null) return null;
     final uri = res['uri'] as String?;
@@ -180,44 +207,6 @@ class Downloader {
     final label = (res['label'] as String?)?.trim() ?? '';
     return StorageTarget(treeUri: uri, label: label.isEmpty ? uri : label);
   }
-
-  /// 同时下载的文件数。单个大文件内部的 Range 并发由 [maxSegments] 控制。
-  static const int concurrency = 4;
-
-  /// 大文件按 Range 分段并行,避免单连接吞吐成为瓶颈。
-  ///
-  /// 代价是每条新连接要付一次 TLS 握手(实测约 0.4s)。所以小文件不分段:
-  /// 几 MB 的实况图多开几条,省下的时间还不够握手。超过 [segmentedFromBytes]
-  /// 才分段,那时握手的开销在几分钟的传输面前可以忽略。
-  ///
-  /// 三个参数留成可改的静态字段只为了测试(不然一个用例要真下 8MB)。
-  static int segmentedFromBytes = 8 << 20;
-
-  /// 一段多大。
-  ///
-  /// 4MB 在请求次数与取消响应速度之间取平衡。
-  ///
-  /// 注意它同时是**内存峰值**的乘数:一个 worker 在内存里攒够一段才落盘,
-  /// 并发 [maxSegments] 条时峰值约 `maxSegments × segmentBytes`
-  /// (16 × 4MB = 64MB)。AndroidManifest 里开了 largeHeap 兜这个。
-  static int segmentBytes = 4 << 20;
-
-  /// 一个大文件最多同时开几条 Range 连接。速度取决于 CDN 和当前网络,界面上的
-  /// 实时 MB/s 才是判断依据。
-  ///
-  /// **32 是真机扫出来的,别凭"少被重置"往下调**:降到 8 时速度几乎腰斩,连 16 都
-  /// 只有 32 的一半 —— 这类链路上**单连接吞吐是被限住的**,聚合速度基本和 lane 数
-  /// 成正比。同一条 153MB 的地址实测:16 路快段约 13.6MB/s,32 路快段约 25MB/s。
-  ///
-  /// `Connection reset` / 读超时那件事由**段级重试 + 断点续传**兜住
-  /// (NativeDownloader 的 ChunkAttempts),不要拿并行度去换稳定性。
-  ///
-  /// 批量下大文件时原生侧会按文件数把额度摊薄(`lanesPerItem`),免得 4 个视频各开
-  /// 32 条 = 128 条连接去撞 CDN 的并发上限。
-  ///
-  /// 想重新量,用 debug 构建:先 `--ei dl_segments 32` 定住档位,再照常下载看日志
-  /// (见 lib/bench.dart)。
-  static int maxSegments = 32;
 
   /// 不知道某条多大时,按这个字节数估进总量,免得进度条先冲到 100% 再倒退。
   static const int _unknownSizeGuess = 1024 * 1024;
@@ -229,17 +218,6 @@ class Downloader {
   /// 文件不到尾巴的两倍就整条按大段走,免得小文件平白多出一串握手。
   static const int _tailBytes = 32 << 20;
   static const int _tailChunkBytes = 1 << 20;
-
-  /// 一条连接最多收多久还没把当前这一段收完,就掐掉换一条(判据见
-  /// [shouldRotateConnection])。与原生侧同一个量(10 秒):正常连接收一段 4MB 只要
-  /// 2~5 秒,10 秒还没完的基本就是被限速那种。
-  ///
-  /// 留成可改的静态字段只为测试 —— 不然验"慢连接会被掐掉换一条"要真等 10 秒。
-  static int connectionBudgetMs = 10000;
-
-  /// 这一批下几条。分段时按它把每条的并行路数摊薄(见 [lanesPerItem]):4 个视频各开
-  /// 32 条就是 128 条连接,那是拿去撞 CDN 并发上限的。由 [_saveAllInDart] 开工前设定。
-  static int _batchItems = 1;
 
   /// 一段的「还要不要接着试」的账本参数,与原生侧一致:连着 4 次一个字节都没收到才算
   /// 这一段废了;[_chunkAttemptLimit] 是兜底,防止"每次都收到一点点"把重试拖成死循环。
@@ -253,7 +231,7 @@ class Downloader {
   /// —— 失败那条不留,同一批里已经下完存好的照常进相册,最后再把失败报上去。
   ///
   /// 收流交给原生做(见 [nativeDownload]);Dart 只负责调度、定后缀和登记媒体库。
-  static Future<void> saveAll(
+  Future<void> saveAll(
     List<DownloadItem> items, {
     required void Function(DownloadProgress) onProgress,
     bool Function()? cancelled,
@@ -261,7 +239,13 @@ class Downloader {
     final temp = await getTemporaryDirectory();
     if (useDartEngine) {
       // 测试专用:没有原生端时(或者要精确控制字节流时)走 Dart 实现。
-      await _saveAllInDart(items, onProgress: onProgress, cancelled: cancelled);
+      await _saveAllInDart(
+        items,
+        onProgress: onProgress,
+        cancelled: cancelled,
+        tuning: tuning,
+        deps: deps,
+      );
       return;
     }
     await nativeDownload(
@@ -272,20 +256,12 @@ class Downloader {
     );
   }
 
-  /// 是否强制用 Dart 实现收流。**只给测试用**,生产代码不碰。
-  ///
-  /// 页面的 widget 测试不能真发网络请求,它们靠替换 [fetchImpl] 造数据 —— 而原生
-  /// 那条路是走平台通道的,根本到不了 [fetchImpl]。所以测试开头把它设成 true,
-  /// 让下载走 Dart 实现,替身才生效。
-  @visibleForTesting
-  static bool useDartEngine = false;
-
   /// 走原生并行下载,拿回落盘好的文件,再逐条定后缀、登记媒体库。
   ///
   /// 原生那边:一条连接一个 Range,每拉 4MB 换下一条,直接用 `seek` 写到目标文件的
   /// 对应偏移(不分片、不拼接)。返回的是 `{path, ext}` —— `ext` 是它从 Content-Type
   /// 猜的,`_retag` 拿它兜底(文件头嗅探优先)。
-  static Future<void> nativeDownload(
+  Future<void> nativeDownload(
     List<DownloadItem> items, {
     required Directory temp,
     required void Function(DownloadProgress) onProgress,
@@ -380,7 +356,7 @@ class Downloader {
               'kind': items[i].kind.wireName,
             },
         ],
-        'segments': maxSegments,
+        'segments': tuning.maxSegments,
       });
       if (started is! int) throw StateError('原生没有返回任务 id');
 
@@ -482,11 +458,11 @@ class Downloader {
           probeExt,
         );
         ownedPaths.add(retagged.path);
-        await _tagIfNeeded(items[i], retagged);
+        await _tagIfNeeded(items[i], retagged, deps.tag);
         // 登记进媒体库之前盖日期:相册扫元数据会读走创建 / 拍摄时间,
         // 盖晚了(入相册之后再改文件)就来不及了。
-        await _stampDownloadedDate(retagged);
-        final uri = await publishImpl(items[i], retagged);
+        await deps.dateStamp(retagged);
+        final uri = await deps.publish(items[i], retagged);
         if (uri != null) publishedUris.add(uri);
         ownedPaths.remove(retagged.path);
         // 这一条已经进相册了:把它算进"已就位"的字节,并清掉"当前这条"的计数
@@ -514,7 +490,7 @@ class Downloader {
       if (error is DownloadCancelled && items.length == 1) {
         for (final uri in publishedUris) {
           try {
-            await unpublishImpl(uri);
+            await deps.unpublish(uri);
           } catch (error, stack) {
             // 撤不回来(个别 ROM 拒删)也不能挡住下面的清理和异常上报
             swallow('dl.unpublish-rollback', error, stack);
@@ -533,41 +509,6 @@ class Downloader {
       _inFlight = false;
     }
   }
-
-  /// 收流这一步的实现。
-  ///
-  /// 留成可替换的静态字段**只为了测试**:widget 测试里换成「立刻下完」或
-  /// 「一直等着」的假实现,不然一次真网络请求会把用例拖成碰运气。生产代码不碰它。
-  static Future<File> Function(
-    DownloadItem item,
-    Directory temp,
-    void Function(double) onFraction,
-    bool Function()? cancelled,
-    void Function(int size)? onSize,
-    HttpClient? client,
-  )
-  fetchImpl = _fetchOverHttp;
-
-  /// 落盘这一步的实现。同上,测试里换成不发平台调用的假实现。
-  ///
-  /// 返回媒体库给的 uri(拿不到就是 null);取消/失败时靠它把已经登记进去的撤回。
-  static Future<String?> Function(DownloadItem item, File file) publishImpl =
-      _publishToMediaStore;
-
-  /// 落盘前把文件里的创建 / 拍摄时间改成下载时间(见 [stampDownloadDate])。
-  ///
-  /// 留成可替换的静态字段只为了测试。
-  static Future<void> Function(File file) dateStampImpl = stampDownloadDate;
-
-  /// 写音频标签这一步的实现。同上,测试里换成不碰文件的假实现。
-  ///
-  /// 默认就是 [embedAudioTags] —— 它自己吞异常,所以这里不需要再包一层。
-  static Future<bool> Function(File file, AudioTagInfo tags, String ext)
-  tagImpl = (file, tags, ext) => embedAudioTags(file, tags, ext: ext);
-
-  /// 撤销那一步的实现。同上,测试里可替换。
-  static Future<void> Function(String uri) unpublishImpl =
-      _unpublishFromMediaStore;
 
   /// 清掉上一次留下的孤儿分片。
   ///
@@ -610,3 +551,10 @@ class Downloader {
     return removed;
   }
 }
+
+/// 应用里那一份下载器。
+///
+/// widget 测试在构造 LiquidGlassDemo 时换掉它(传 downloader);debug 构建里
+/// `--ei dl_segments N` 也整份换掉 —— [DownloadTuning] 不可变,只能换一份新的
+/// (见 lib/bench.dart)。
+Downloader appDownloader = Downloader();

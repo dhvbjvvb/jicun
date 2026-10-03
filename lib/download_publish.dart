@@ -4,33 +4,29 @@ part of 'downloader.dart';
 //
 // 这几个动作都要过平台通道,所以实现体本身很短,长的是「为什么这么写」的注释。
 
-/// 盖日期的实际调用口。
+/// 写音频标签的真实现。[DownloadDeps.tag] 的默认值是 [_embedAudioTags]。
 ///
-/// **测试里直接跳过**:那批用例开着 [useDartEngine] 走假引擎,而且 testWidgets
-/// 用的是假时钟 —— 真实文件 I/O 的 Future 不会被它推进,`await` 下去会让
-/// `pumpAndSettle` 直接超时。生产(`useDartEngine == false`)照常盖。
-Future<void> _stampDownloadedDate(File file) async {
-  if (Downloader.useDartEngine) return;
-  await Downloader.dateStampImpl(file);
-}
+/// 包一层是为了让默认值能在 `const` 构造里当函数引用传(见 [DownloadDeps])。
+Future<bool> _embedAudioTags(File file, AudioTagInfo tags, String ext) =>
+    embedAudioTags(file, tags, ext: ext);
 
 /// 该写标签就写。
 ///
-/// **必须在 `publishImpl` 之前调**:文件一进 MediaStore 就不再是应用能随便改的
+/// **必须在落盘那一步之前调**:文件一进 MediaStore 就不再是应用能随便改的
 /// 普通文件了(Android 10+ 的分区存储),那时候再想改内容得走 ContentResolver。
 ///
 /// **失败一律吞掉**:标签是装饰,用户要的是那个文件。封面抓不到、容器认不出、
 /// 磁盘写不动,都只留一条 debug 日志,照常把没标签的文件登记进媒体库。
-Future<void> _tagIfNeeded(DownloadItem item, File file) async {
+Future<void> _tagIfNeeded(
+  DownloadItem item,
+  File file,
+  Future<bool> Function(File file, AudioTagInfo tags, String ext) tag,
+) async {
   final tags = item.tags;
   if (tags == null || tags.isEmpty || item.kind != MediaKind.audio) return;
   final dot = file.path.lastIndexOf('.');
   try {
-    await Downloader.tagImpl(
-      file,
-      tags,
-      dot < 0 ? '' : file.path.substring(dot),
-    );
+    await tag(file, tags, dot < 0 ? '' : file.path.substring(dot));
   } catch (error, stack) {
     if (kDebugMode) {
       debugPrint('[tag] ${item.fileName} 写标签失败,按原文件入库:$error\n$stack');

@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jicun/downloader.dart';
 
+import 'dart_engine_support.dart';
+
 /// 一个假的 CDN:认 Range,回 206。用来证明大文件真的走了分段并行,
 /// 而且是**并发**在拉 —— 单连接串行也能拼出正确结果,所以光看文件内容不够。
 ///
@@ -93,6 +95,7 @@ class _FakeCdn {
 }
 
 void main() {
+  setUp(() => tuning = const DownloadTuning());
   test('大文件走 Range 分段并行,拼出来的字节和原文件一致', () async {
     final original = List<int>.generate(64 * 1024, (i) => i % 251);
     final cdn = _FakeCdn(original);
@@ -103,22 +106,16 @@ void main() {
     addTearDown(() => temp.deleteSync(recursive: true));
 
     // 把阈值调小,免得测试真下 8MB
-    final realFrom = Downloader.segmentedFromBytes;
-    final realSegments = Downloader.maxSegments;
-    final realChunk = Downloader.segmentBytes;
-    Downloader.segmentedFromBytes = 16 * 1024;
-    Downloader.segmentBytes = 16 * 1024;
-    Downloader.maxSegments = 4;
-    addTearDown(() {
-      Downloader.segmentedFromBytes = realFrom;
-      Downloader.segmentBytes = realChunk;
-      Downloader.maxSegments = realSegments;
-    });
+    tuning = const DownloadTuning(
+      segmentedFromBytes: 16 * 1024,
+      segmentBytes: 16 * 1024,
+      maxSegments: 4,
+    );
 
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
 
-    final file = await Downloader.fetchImpl(
+    final file = await fetchWith(
       DownloadItem(
         url: cdn.uri.toString(),
         fileName: 'big.mp4',
@@ -148,22 +145,16 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_nohdr');
     addTearDown(() => temp.deleteSync(recursive: true));
 
-    final realFrom = Downloader.segmentedFromBytes;
-    final realChunk = Downloader.segmentBytes;
-    final realSegments = Downloader.maxSegments;
-    Downloader.segmentedFromBytes = 16 * 1024;
-    Downloader.segmentBytes = 16 * 1024;
-    Downloader.maxSegments = 4;
-    addTearDown(() {
-      Downloader.segmentedFromBytes = realFrom;
-      Downloader.segmentBytes = realChunk;
-      Downloader.maxSegments = realSegments;
-    });
+    tuning = const DownloadTuning(
+      segmentedFromBytes: 16 * 1024,
+      segmentBytes: 16 * 1024,
+      maxSegments: 4,
+    );
 
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
 
-    final file = await Downloader.fetchImpl(
+    final file = await fetchWith(
       DownloadItem(
         url: cdn.uri.toString(),
         fileName: 'nohdr.mp4',
@@ -194,7 +185,7 @@ void main() {
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
 
-    final file = await Downloader.fetchImpl(
+    final file = await fetchWith(
       DownloadItem(
         url: cdn.uri.toString(),
         fileName: 'small.jpg',
@@ -222,24 +213,18 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_cancel');
     addTearDown(() => temp.deleteSync(recursive: true));
 
-    final realFrom = Downloader.segmentedFromBytes;
-    final realChunk = Downloader.segmentBytes;
-    Downloader.segmentedFromBytes = 16 * 1024;
-    Downloader.segmentBytes = 16 * 1024;
-    final realSegments = Downloader.maxSegments;
-    Downloader.maxSegments = 4;
-    addTearDown(() {
-      Downloader.segmentedFromBytes = realFrom;
-      Downloader.segmentBytes = realChunk;
-      Downloader.maxSegments = realSegments;
-    });
+    tuning = const DownloadTuning(
+      segmentedFromBytes: 16 * 1024,
+      segmentBytes: 16 * 1024,
+      maxSegments: 4,
+    );
 
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
 
     var checks = 0;
     await expectLater(
-      Downloader.fetchImpl(
+      fetchWith(
         DownloadItem(
           url: cdn.uri.toString(),
           fileName: 'cancel.mp4',
@@ -274,20 +259,16 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_200');
     addTearDown(() => temp.deleteSync(recursive: true));
 
-    final realFrom = Downloader.segmentedFromBytes;
-    final realChunk = Downloader.segmentBytes;
     // 让一段就盖住整条 —— 这是"区间 == 整条"那条路的前提
-    Downloader.segmentedFromBytes = 16 * 1024;
-    Downloader.segmentBytes = 1024 * 1024;
-    addTearDown(() {
-      Downloader.segmentedFromBytes = realFrom;
-      Downloader.segmentBytes = realChunk;
-    });
+    tuning = const DownloadTuning(
+      segmentedFromBytes: 16 * 1024,
+      segmentBytes: 1024 * 1024,
+    );
 
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
 
-    final file = await Downloader.fetchImpl(
+    final file = await fetchWith(
       DownloadItem(
         url: cdn.uri.toString(),
         fileName: 'full.mp4',
@@ -313,26 +294,18 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_rotate');
     addTearDown(() => temp.deleteSync(recursive: true));
 
-    final realFrom = Downloader.segmentedFromBytes;
-    final realChunk = Downloader.segmentBytes;
-    final realSegments = Downloader.maxSegments;
-    final realBudget = Downloader.connectionBudgetMs;
-    Downloader.segmentedFromBytes = 16 * 1024;
-    Downloader.segmentBytes = 16 * 1024;
-    Downloader.maxSegments = 4;
-    // 正常连接收一小段只要几十毫秒,预算压到 120ms 才不用真等 10 秒
-    Downloader.connectionBudgetMs = 120;
-    addTearDown(() {
-      Downloader.segmentedFromBytes = realFrom;
-      Downloader.segmentBytes = realChunk;
-      Downloader.maxSegments = realSegments;
-      Downloader.connectionBudgetMs = realBudget;
-    });
+    tuning = const DownloadTuning(
+      segmentedFromBytes: 16 * 1024,
+      segmentBytes: 16 * 1024,
+      maxSegments: 4,
+      // 正常连接收一小段只要几十毫秒,预算压到 120ms 才不用真等 10 秒
+      connectionBudgetMs: 120,
+    );
 
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
 
-    final file = await Downloader.fetchImpl(
+    final file = await fetchWith(
       DownloadItem(
         url: cdn.uri.toString(),
         fileName: 'slow.mp4',
@@ -368,23 +341,17 @@ void main() {
       if (temp.existsSync()) temp.deleteSync(recursive: true);
     });
 
-    final realFrom = Downloader.segmentedFromBytes;
-    final realChunk = Downloader.segmentBytes;
-    final realSegments = Downloader.maxSegments;
-    Downloader.segmentedFromBytes = 16 * 1024;
-    Downloader.segmentBytes = 16 * 1024;
-    Downloader.maxSegments = 4;
-    addTearDown(() {
-      Downloader.segmentedFromBytes = realFrom;
-      Downloader.segmentBytes = realChunk;
-      Downloader.maxSegments = realSegments;
-    });
+    tuning = const DownloadTuning(
+      segmentedFromBytes: 16 * 1024,
+      segmentBytes: 16 * 1024,
+      maxSegments: 4,
+    );
 
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
 
     // 先不 await:让它把分片落到盘上,再看那些分片叫什么
-    final pending = Downloader.fetchImpl(
+    final pending = fetchWith(
       DownloadItem(
         url: cdn.uri.toString(),
         fileName: 'parts.mp4',

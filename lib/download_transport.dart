@@ -13,10 +13,15 @@ String _tempPath(Directory temp, int index) =>
     '${temp.path}/jicun_${DateTime.now().microsecondsSinceEpoch}_$index.part';
 
 /// Dart 侧的下载实现,只当原生的兜底(慢一倍以上)。逻辑与原来一致。
+///
+/// [tuning] 与 [deps] 由调用方([Downloader.saveAll])的那一份传下来:这里只搬字节,
+/// 参数从哪来、替身是谁都不是这一段的事。
 Future<void> _saveAllInDart(
   List<DownloadItem> items, {
   required void Function(DownloadProgress) onProgress,
   bool Function()? cancelled,
+  required DownloadTuning tuning,
+  required DownloadDeps deps,
 }) async {
   final temp = await getTemporaryDirectory();
   final bytes = List<int>.filled(items.length, 0);
@@ -46,8 +51,8 @@ Future<void> _saveAllInDart(
     final delta = received - lastLoggedBytes;
     lastLoggedBytes = received;
     debugPrint(
-      '[dl] ${items.length} 个文件 · 每文件最多 $Downloader.maxSegments 段 '
-      '× ${(Downloader.segmentBytes ~/ (1024 * 1024))}MB · 并发 $Downloader.concurrency'
+      '[dl] ${items.length} 个文件 · 每文件最多 ${tuning.maxSegments} 段 '
+      '× ${(tuning.segmentBytes ~/ (1024 * 1024))}MB · 并发 ${tuning.concurrency}'
       ' | 已收 ${(received / (1024 * 1024)).toStringAsFixed(1)}MB'
       ' | 近 3 秒 ${(delta / 3 / (1024 * 1024)).toStringAsFixed(2)} MB/s'
       ' | 全程均值 ${(received / (ms / 1000) / (1024 * 1024)).toStringAsFixed(2)} MB/s',
@@ -82,13 +87,9 @@ Future<void> _saveAllInDart(
   //
   // 批量下大文件时按文件数摊薄每条的额度(判据在规格里,见 [lanesPerItem]):
   // 4 个 100MB 的视频各开满 32 条就是 128 条,那是拿去撞 CDN 并发上限的。
-  Downloader._batchItems = items.length;
-  final lanesEach = math.max(
-    1,
-    lanesPerItem(Downloader.maxSegments, items.length),
-  );
+  final lanesEach = math.max(1, lanesPerItem(tuning.maxSegments, items.length));
   client.maxConnectionsPerHost =
-      math.min(Downloader.concurrency, items.length) * lanesEach;
+      math.min(tuning.concurrency, items.length) * lanesEach;
   var next = 0;
   try {
     Future<void> worker() async {
@@ -97,24 +98,29 @@ Future<void> _saveAllInDart(
         final index = next++;
         if (index >= items.length) return;
         final item = items[index];
-        final file = await _fetch(
+        final file = await deps.fetch(
           item,
-          temp,
-          onFraction: (f) {
-            // 单条这一秒的进度按它自己的大小折算成字节;总量未知时按估值算
-            final size = sizes[index] > 0
-                ? sizes[index]
-                : Downloader._unknownSizeGuess;
-            bytes[index] = (size * f).round();
-            report();
-          },
-          cancelled: cancelled,
-          onSize: (size) => noteSize(index, size),
-          client: client,
+          FetchContext(
+            temp: temp,
+            tuning: tuning,
+            batchItems: items.length,
+            onFraction: (f) {
+              // 单条这一秒的进度按它自己的大小折算成字节;总量未知时按估值算
+              final size = sizes[index] > 0
+                  ? sizes[index]
+                  : Downloader._unknownSizeGuess;
+              bytes[index] = (size * f).round();
+              report();
+            },
+            cancelled: cancelled,
+            onSize: (size) => noteSize(index, size),
+            client: client,
+          ),
         );
-        await _tagIfNeeded(item, file);
-        await _stampDownloadedDate(file);
-        await Downloader.publishImpl(item, file);
+        await _tagIfNeeded(item, file, deps.tag);
+        // 盖日期这一步在假引擎下是空实现(收在 Downloader 的构造里,理由见那边)。
+        await deps.dateStamp(file);
+        await deps.publish(item, file);
         // 这条已经进相册了:算进"已就位"的字节(见 [report])。
         publishedBytes += sizes[index] > 0 ? sizes[index] : bytes[index];
         finished++;
@@ -125,9 +131,7 @@ Future<void> _saveAllInDart(
       }
     }
 
-    await Future.wait([
-      for (var i = 0; i < Downloader.concurrency; i++) worker(),
-    ]);
+    await Future.wait([for (var i = 0; i < tuning.concurrency; i++) worker()]);
   } finally {
     client.close();
   }
@@ -138,41 +142,26 @@ Future<void> _saveAllInDart(
 
 /// 收一条到临时目录,返回落盘的文件。取消时删掉半个文件再抛 [DownloadCancelled]。
 ///
-/// 转发到 [fetchImpl],生产代码不碰它。
-Future<File> _fetch(
-  DownloadItem item,
-  Directory temp, {
-  required void Function(double) onFraction,
-  bool Function()? cancelled,
-  void Function(int size)? onSize,
-  HttpClient? client,
-}) => Downloader.fetchImpl(item, temp, onFraction, cancelled, onSize, client);
-
-Future<File> _fetchOverHttp(
-  DownloadItem item,
-  Directory temp,
-  void Function(double) onFraction,
-  bool Function()? cancelled,
-  void Function(int size)? onSize,
-  HttpClient? client,
-) async {
+/// 默认那份就是这里([DownloadDeps.fetch] 的默认值是它);要换替身的话看
+/// [DownloadDeps]。
+Future<File> _fetchOverHttp(DownloadItem item, FetchContext ctx) async {
   // 走 dart:io 的 HttpClient 而不是 package:http —— 前者能复用连接池,
   // package:http 的 IOClient 每次 send 都可能另起一条连接。
-  final http = client ?? HttpClient();
+  final http = ctx.client ?? HttpClient();
   // 落盘的临时名唯一即可(见 [_tempPath]);相册里的名字由收尾的 [_retag] 按
   // `item.fileName` 定,两者解耦,下载途中不会互相覆盖。
-  var target = File(_tempPath(temp, 0));
+  var target = File(_tempPath(ctx.temp, 0));
   final stem = _stemOf(item.fileName);
   final segments = <String, File>{};
   try {
-    final probe = await _probe(item.url, http, cancelled);
+    final probe = await _probe(item.url, http, ctx.cancelled);
     if (probe.statusCode != 200 && probe.statusCode != 206) {
       unawaited(probe.drain<void>().catchError((Object _) {}));
       throw HttpException('HTTP ${probe.statusCode}', uri: Uri.parse(item.url));
     }
     // 整条大小:206 得从 Content-Range 里读,`contentLength` 只是那 1 字节。
     final total = _sizeOf(probe);
-    onSize?.call(total > 0 ? total : 0);
+    ctx.onSize?.call(total > 0 ? total : 0);
     // 探针那一发就带着响应头,顺手把这条的真扩展名定下来 —— 见 [_extensionFor]。
     final probeExt = extensionForContentType(
       probe.headers.contentType?.mimeType,
@@ -181,7 +170,7 @@ Future<File> _fetchOverHttp(
     // 服务端认 Range(回 206 就算认,不要求有 Accept-Ranges)、文件又够大,
     // 才分段并行。认不出大小或不支持就退回单连接老路 —— 慢总比下不动强。
     if (probe.statusCode == 206 &&
-        total >= Downloader.segmentedFromBytes &&
+        total >= ctx.tuning.segmentedFromBytes &&
         _acceptsRanges(probe)) {
       // 探针那 1 字节扔掉,连接强制关掉,别让脏连接回池子。
       unawaited(probe.drain<void>().catchError((Object _) {}));
@@ -190,10 +179,8 @@ Future<File> _fetchOverHttp(
         http,
         target,
         segments,
-        temp,
+        ctx,
         total,
-        onFraction,
-        cancelled,
         // 分片的临时名挂在目标文件名上(`X.<序号>.part`),末尾那个 `.part` 不能少 ——
         // 启动清扫就按它认"下载留下的临时物"(见 [sweepLeftovers]);传别的前缀会留下
         // 一堆清扫认不出的孤儿分片。
@@ -214,16 +201,10 @@ Future<File> _fetchOverHttp(
           uri: Uri.parse(item.url),
         );
       }
-      await _fetchSingle(
-        fresh,
-        target,
-        fresh.contentLength,
-        onFraction,
-        cancelled,
-      );
+      await _fetchSingle(fresh, target, fresh.contentLength, ctx);
     } else {
       // 服务端对 Range 不理(回了 200),那这条连接上就是整个文件。
-      await _fetchSingle(probe, target, total, onFraction, cancelled);
+      await _fetchSingle(probe, target, total, ctx);
     }
     // 文件头比响应头可信(有些 CDN 的 Content-Type 是错的),所以最终以嗅探为准,
     // 嗅不出来才用探针那发的 Content-Type。
@@ -237,7 +218,7 @@ Future<File> _fetchOverHttp(
     }
     rethrow;
   } finally {
-    if (client == null) http.close(force: true);
+    if (ctx.client == null) http.close(force: true);
   }
 }
 
@@ -280,17 +261,16 @@ Future<void> _fetchSingle(
   HttpClientResponse response,
   File target,
   int total,
-  void Function(double) onFraction,
-  bool Function()? cancelled,
+  FetchContext ctx,
 ) async {
   var received = 0;
   final sink = target.openWrite();
   try {
     await for (final chunk in response.timeout(Downloader._idleTimeout)) {
-      if (cancelled?.call() ?? false) throw const DownloadCancelled();
+      if (ctx.cancelled?.call() ?? false) throw const DownloadCancelled();
       sink.add(chunk);
       received += chunk.length;
-      if (total > 0) onFraction((received / total).clamp(0.0, 1.0));
+      if (total > 0) ctx.onFraction((received / total).clamp(0.0, 1.0));
     }
     await sink.flush();
     await sink.close();
@@ -302,9 +282,6 @@ Future<void> _fetchSingle(
   }
 }
 
-/// 按 Range 把一条大文件切成几段并行收,收完按顺序拼成一个文件。
-///
-/// [stem] 只拿来给分片临时文件起名,和相册里的名字无关。
 /// 按 Range 把一条大文件切成几段并行收,收完按顺序拼成一个文件。
 ///
 /// **判据全部来自 [download_logic]**(跨端规格,和原生侧共用同一份测试向量):
@@ -320,10 +297,8 @@ Future<void> _fetchSegments(
   HttpClient http,
   File target,
   Map<String, File> segments,
-  Directory temp,
+  FetchContext ctx,
   int total,
-  void Function(double) onFraction,
-  bool Function()? cancelled,
   String stem,
 ) async {
   var received = 0;
@@ -336,7 +311,7 @@ Future<void> _fetchSegments(
   // 进度按整条文件算:每个段收到多少都加进同一个计数,圆环才是一条直线
   void bump(int delta) {
     received += delta;
-    onFraction((received / total).clamp(0.0, 1.0));
+    ctx.onFraction((received / total).clamp(0.0, 1.0));
   }
 
   // 认领是**共享游标**:谁空谁领下一段,领完(返回 null)就收工。区间怎么切、尾巴怎么
@@ -346,7 +321,7 @@ Future<void> _fetchSegments(
     final chunk = claimedChunkWithTail(
       claims,
       total,
-      Downloader.segmentBytes,
+      ctx.tuning.segmentBytes,
       Downloader._tailBytes,
       Downloader._tailChunkBytes,
     );
@@ -369,12 +344,12 @@ Future<void> _fetchSegments(
 
   Future<void> one() async {
     while (true) {
-      if (cancelled?.call() ?? false) throw const DownloadCancelled();
+      if (ctx.cancelled?.call() ?? false) throw const DownloadCancelled();
       final index = claims;
       final chunk = claimNext();
       if (chunk == null) return; // 领完了
       final name = partNameOf(index);
-      final part = File('${temp.path}/$name');
+      final part = File('${ctx.temp.path}/$name');
       segments[name] = part;
       if (part.existsSync()) part.deleteSync();
       final ledger = ChunkAttempts(
@@ -386,7 +361,7 @@ Future<void> _fetchSegments(
         final written = part.existsSync() ? part.lengthSync() : 0;
         final from = resumeOffset(written, chunk.start, chunk.end);
         if (from > chunk.end) break; // 这一段满了
-        if (cancelled?.call() ?? false) throw const DownloadCancelled();
+        if (ctx.cancelled?.call() ?? false) throw const DownloadCancelled();
         final request = await http.getUrl(Uri.parse(item.url));
         request.headers.set(
           HttpHeaders.rangeHeader,
@@ -424,7 +399,7 @@ Future<void> _fetchSegments(
         final sink = part.openWrite(mode: FileMode.append);
         try {
           await for (final block in response.timeout(Downloader._idleTimeout)) {
-            if (cancelled?.call() ?? false) throw const DownloadCancelled();
+            if (ctx.cancelled?.call() ?? false) throw const DownloadCancelled();
             sink.add(block);
             got += block.length;
             bump(block.length);
@@ -435,7 +410,7 @@ Future<void> _fetchSegments(
               written + got,
               chunk.length,
               segWatch.elapsedMilliseconds - startedAt,
-              Downloader.connectionBudgetMs,
+              ctx.tuning.connectionBudgetMs,
             )) {
               rotated = true;
               break;
@@ -470,8 +445,8 @@ Future<void> _fetchSegments(
   final lanes = math.max(
     1,
     math.min(
-      Downloader.maxSegments,
-      lanesPerItem(Downloader.maxSegments, Downloader._batchItems),
+      ctx.tuning.maxSegments,
+      lanesPerItem(ctx.tuning.maxSegments, ctx.batchItems),
     ),
   );
   try {

@@ -191,6 +191,10 @@ List<String> useStubTwoUpstreams({
   return hits;
 }
 
+/// 最近一份假下载器。页面是从 `ShellController.downloader` 拿下载器的,所以
+/// 得把它喂给 [LiquidGlassDemo] 的 `downloader` 参数才算装上。
+Downloader? _stubDownloader;
+
 /// 假下载器:不碰网络、不碰媒体库,只把每条要下的东西记下来。
 List<DownloadItem> useStubDownloader() {
   // 下载第一步要问系统要临时目录。测试里没有真的 path_provider 插件,
@@ -211,29 +215,24 @@ List<DownloadItem> useStubDownloader() {
   );
 
   final items = <DownloadItem>[];
-  final realFetch = Downloader.fetchImpl;
-  final realPublish = Downloader.publishImpl;
-  Downloader.fetchImpl =
-      (item, temp, onFraction, cancelled, onSize, client) async {
+  _stubDownloader = Downloader(
+    useDartEngine: true,
+    deps: DownloadDeps(
+      fetch: (item, ctx) async {
         items.add(item);
-        onSize?.call(100);
-        onFraction(1);
-        return File('${temp.path}/${item.fileName}');
-      };
-  Downloader.publishImpl = (item, file) async => null;
-  addTearDown(() {
-    Downloader.fetchImpl = realFetch;
-    Downloader.publishImpl = realPublish;
-  });
+        ctx.onSize?.call(100);
+        ctx.onFraction(1);
+        return File('${ctx.temp.path}/${item.fileName}');
+      },
+      publish: (item, file) async => null,
+    ),
+  );
   return items;
 }
 
 void main() {
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized();
-    // 收流那一步生产上是原生的(平台通道),测试里到不了替身 —— 走 Dart 实现,
-    // 替身(fetchImpl)才生效。见 Downloader.useDartEngine。
-    Downloader.useDartEngine = true;
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
@@ -911,7 +910,7 @@ void main() {
       tester.view.physicalSize = const Size(1260, 2800);
       tester.view.devicePixelRatio = 3.5;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(const LiquidGlassDemo());
+      await tester.pumpWidget(LiquidGlassDemo(downloader: _stubDownloader));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.enterText(find.byType(CupertinoTextField), link);
       await tester.pump();

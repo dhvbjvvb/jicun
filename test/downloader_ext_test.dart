@@ -7,6 +7,8 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:jicun/audio_tags.dart';
 import 'package:jicun/downloader.dart';
 
+import 'dart_engine_support.dart';
+
 /// `saveAll` 会去问临时目录。这里直接把平台实现换掉,而不是启动
 /// `TestWidgetsFlutterBinding` —— 那个 binding 一装上,整个套件里的 HttpClient
 /// 都会被拦成 400(实测),本文件里几个用例要靠真本机 HTTP 服务端。
@@ -75,9 +77,8 @@ List<int> _gifBytes(int length) {
 }
 
 void main() {
-  // 收流那一步生产上是原生的(走平台通道),测试里到不了替身 —— 统一改走 Dart 实现。
-  // 见 Downloader.useDartEngine。
-  Downloader.useDartEngine = true;
+  // 可调项每次回到出厂值,免得上面一条用例改过的数字漏下来。
+  setUp(() => tuning = const DownloadTuning());
 
   group('扩展名按内容定,不按地址猜', () {
     test('Content-Type 认得出就对得上类型,认不出或对不上都给空', () {
@@ -223,14 +224,7 @@ void main() {
         fileName: '头条动图_1.jpg',
         kind: MediaKind.image,
       );
-      final file = await Downloader.fetchImpl(
-        item,
-        temp,
-        (_) {},
-        null,
-        (_) {},
-        client,
-      );
+      final file = await fetchWith(item, temp, (_) {}, null, (_) {}, client);
 
       expect(file.path, endsWith('.gif'));
       expect(item.fileName, '头条动图_1.gif');
@@ -238,7 +232,7 @@ void main() {
     });
 
     test('saveAll 走完整条路:交给 publish 的名字也必须是 .gif', () async {
-      // 这一条是踩过的坑:只改临时文件名的话 publishImpl 拿到的还是 item.fileName
+      // 这一条是踩过的坑:只改临时文件名的话 publish 拿到的还是 item.fileName
       // 里的错后缀,相册里照旧是 .jpg —— 真机就是这么漏过去的。
       final cdn = _FakeToutiao(_gifBytes(4096), 'image/gif');
       await cdn.start();
@@ -248,21 +242,24 @@ void main() {
       PathProviderPlatform.instance = _TempDir();
 
       final published = <String>[];
-      final realPublish = Downloader.publishImpl;
-      Downloader.publishImpl = (item, file) async {
-        // 内容也得跟着一起对:名字改成 .gif 而内容是别的格式就是另一种错
-        expect(await file.readAsBytes(), equals(_gifBytes(4096)));
-        published.add(item.fileName);
-        return null;
-      };
-      addTearDown(() => Downloader.publishImpl = realPublish);
+      final dl = Downloader(
+        useDartEngine: true,
+        deps: DownloadDeps(
+          publish: (item, file) async {
+            // 内容也得跟着一起对:名字改成 .gif 而内容是别的格式就是另一种错
+            expect(await file.readAsBytes(), equals(_gifBytes(4096)));
+            published.add(item.fileName);
+            return null;
+          },
+        ),
+      );
 
       final item = DownloadItem(
         url: cdn.url,
         fileName: '头条动图_1.jpg',
         kind: MediaKind.image,
       );
-      await Downloader.saveAll([item], onProgress: (_) {});
+      await dl.saveAll([item], onProgress: (_) {});
 
       expect(published, ['头条动图_1.gif']);
       expect(item.fileName, '头条动图_1.gif');
@@ -277,22 +274,16 @@ void main() {
       final temp = await Directory.systemTemp.createTemp('jicun_gif_seg');
       addTearDown(() => temp.deleteSync(recursive: true));
 
-      final realFrom = Downloader.segmentedFromBytes;
-      final realSegments = Downloader.maxSegments;
-      final realChunk = Downloader.segmentBytes;
-      Downloader.segmentedFromBytes = 16 * 1024;
-      Downloader.segmentBytes = 16 * 1024;
-      Downloader.maxSegments = 4;
-      addTearDown(() {
-        Downloader.segmentedFromBytes = realFrom;
-        Downloader.segmentBytes = realChunk;
-        Downloader.maxSegments = realSegments;
-      });
+      tuning = const DownloadTuning(
+        segmentedFromBytes: 16 * 1024,
+        segmentBytes: 16 * 1024,
+        maxSegments: 4,
+      );
 
       final client = HttpClient();
       addTearDown(() => client.close(force: true));
 
-      final file = await Downloader.fetchImpl(
+      final file = await fetchWith(
         DownloadItem(
           url: cdn.url,
           fileName: '头条动图_1.jpg',
@@ -342,13 +333,16 @@ void main() {
 
       final published = <String>[];
       final kinds = <MediaKind>[];
-      final realPublish = Downloader.publishImpl;
-      Downloader.publishImpl = (item, file) async {
-        published.add(item.fileName);
-        kinds.add(item.kind);
-        return null;
-      };
-      addTearDown(() => Downloader.publishImpl = realPublish);
+      final dl = Downloader(
+        useDartEngine: true,
+        deps: DownloadDeps(
+          publish: (item, file) async {
+            published.add(item.fileName);
+            kinds.add(item.kind);
+            return null;
+          },
+        ),
+      );
 
       final item = DownloadItem(
         url: cdn.url,
@@ -356,7 +350,7 @@ void main() {
         kind: MediaKind.audio,
         tags: const AudioTagInfo(title: 'ASMR', artist: ''),
       );
-      await Downloader.saveAll([item], onProgress: (_) {});
+      await dl.saveAll([item], onProgress: (_) {});
 
       expect(kinds, [MediaKind.audio]);
       expect(published, ['ASMR_1.m4a']);
@@ -379,7 +373,7 @@ void main() {
       final client = HttpClient();
       addTearDown(() => client.close(force: true));
 
-      final file = await Downloader.fetchImpl(
+      final file = await fetchWith(
         DownloadItem(
           url: cdn.url,
           fileName: '头条动图_1.jpg',

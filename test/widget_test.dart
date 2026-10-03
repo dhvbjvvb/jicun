@@ -28,9 +28,6 @@ import 'package:jicun/ui/theme_appearance_page.dart';
 import 'widget_support.dart';
 
 void main() {
-  // 收流那一步生产上是原生的(走平台通道),测试里到不了替身 —— 统一改走 Dart 实现,
-  // 这样 fetchImpl 那些假下载器才生效。见 Downloader.useDartEngine。
-  Downloader.useDartEngine = true;
   // 音频预览的本地缓存兜底要关:假时钟里真实网络 I/O 不会推进,会把用例挂住。
   AudioStage.localCacheFallback = false;
 

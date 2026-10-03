@@ -29,9 +29,6 @@ import 'package:jicun/ui/playback.dart';
 import 'widget_support.dart';
 
 void main() {
-  // 收流那一步生产上是原生的(走平台通道),测试里到不了替身 —— 统一改走 Dart 实现,
-  // 这样 fetchImpl 那些假下载器才生效。见 Downloader.useDartEngine。
-  Downloader.useDartEngine = true;
   // 音频预览的本地缓存兜底要关:假时钟里真实网络 I/O 不会推进,会把用例挂住。
   AudioStage.localCacheFallback = false;
 
@@ -533,17 +530,17 @@ void main() {
         ],
       },
     );
-    useStubDownloader();
     final items = <DownloadItem>[];
-    Downloader.fetchImpl =
-        (item, temp, onFraction, cancelled, onSize, client) async {
-          items.add(item);
-          onSize?.call(100);
-          onFraction(1);
-          return File('${temp.path}/${item.fileName}');
-        };
+    final dl = useStubDownloader(
+      fetch: (item, ctx) async {
+        items.add(item);
+        ctx.onSize?.call(100);
+        ctx.onFraction(1);
+        return File('${ctx.temp.path}/${item.fileName}');
+      },
+    );
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(

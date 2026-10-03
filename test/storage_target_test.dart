@@ -35,7 +35,7 @@ void main() {
 
   test('没自定义:publish 不带 treeUri(照旧走媒体库)', () async {
     final calls = capture();
-    final uri = await Downloader.publishImpl(item, File('a.mp4'));
+    final uri = await const DownloadDeps().publish(item, File('a.mp4'));
     expect(uri, 'content://doc/1');
     expect(calls.single.arguments['treeUri'], isNull);
   });
@@ -46,7 +46,7 @@ void main() {
       label: '内部存储/Movies/我的视频',
     );
     final calls = capture();
-    await Downloader.publishImpl(item, File('a.mp4'));
+    await const DownloadDeps().publish(item, File('a.mp4'));
     expect(
       calls.single.arguments['treeUri'],
       'content://com.android.externalstorage.documents/tree/primary%3AMovies%2F我的视频',

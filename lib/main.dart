@@ -61,6 +61,7 @@ class LiquidGlassDemo extends StatefulWidget {
     this.entries,
     this.updates,
     this.autoCheckUpdate = true,
+    this.downloader,
   });
 
   /// 偏好存储。传 null(测试里常见)就退化成只用默认值、不落盘。
@@ -83,6 +84,12 @@ class LiquidGlassDemo extends StatefulWidget {
   /// 默认开(需求要的就是这个)。留成参数是为了测试能单独把这条路关掉 ——
   /// widget 测试里真去打 GitHub 会一直等不到结果。
   final bool autoCheckUpdate;
+
+  /// 下载器。传 null 就用应用里那一份(见 [appDownloader])。
+  ///
+  /// 留这个口子**只为了测试**:widget 测试不能真发网络请求、也不该真往相册里写,
+  /// 所以要换一份带假引擎 / 假落盘的下载器(见 [DownloadDeps] 与 [Downloader])。
+  final Downloader? downloader;
 
   @override
   State<LiquidGlassDemo> createState() => HomeShellState();
@@ -189,6 +196,10 @@ class HomeShellState extends State<LiquidGlassDemo>
   final HistoryStore _history = HistoryStore();
   @override
   final TextEditingController linkController = TextEditingController();
+
+  /// 下载器:测试传了就用测试那份,没传就是应用那一份。
+  @override
+  Downloader get downloader => widget.downloader ?? appDownloader;
 
   /// 历史记录。同样放在根 State 上:历史页切走就会被重建,数据留在这儿才不会
   /// 每次进来都重新读一遍存储。

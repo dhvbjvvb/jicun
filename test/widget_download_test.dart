@@ -26,9 +26,6 @@ import 'package:jicun/ui/progress_ring.dart';
 import 'widget_support.dart';
 
 void main() {
-  // 收流那一步生产上是原生的(走平台通道),测试里到不了替身 —— 统一改走 Dart 实现,
-  // 这样 fetchImpl 那些假下载器才生效。见 Downloader.useDartEngine。
-  Downloader.useDartEngine = true;
   // 音频预览的本地缓存兜底要关:假时钟里真实网络 I/O 不会推进,会把用例挂住。
   AudioStage.localCacheFallback = false;
 
@@ -41,9 +38,9 @@ void main() {
   testWidgets('解析页:点下载媒体弹出进度卡片,不是原来的提示框', (tester) async {
     usePhoneSurface(tester);
     useStubParseBackend(data: stubVideoOnlyData);
-    useStubDownloader();
+    final dl = useStubDownloader();
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(
@@ -83,10 +80,10 @@ void main() {
   testWidgets('中途取消:相册里什么都没有,按「下载失败」发一条通知', (tester) async {
     usePhoneSurface(tester);
     useStubParseBackend(data: stubVideoOnlyData);
-    useStubDownloader();
+    final dl = useStubDownloader();
     final calls = useStubNotificationChannel();
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(
@@ -113,19 +110,13 @@ void main() {
   testWidgets('下载失败:卡片自己变红叉,点「关闭」能收掉', (tester) async {
     usePhoneSurface(tester);
     useStubParseBackend(data: stubVideoOnlyData);
-    useStubDownloader();
     // 假下载器改成开头就砸:失败态该在这张卡里收场
     // (通知那条路不接通道也不该挡住失败态 —— 那正是以前卡住的原因之一)
-    Downloader.fetchImpl = (
-      item,
-      temp,
-      onFraction,
-      cancelled,
-      onSize,
-      client,
-    ) async => throw const SocketException('连接被重置');
+    final dl = useStubDownloader(
+      fetch: (item, ctx) async => throw const SocketException('连接被重置'),
+    );
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(
@@ -169,9 +160,9 @@ void main() {
   testWidgets('解析页:下载跑完,取消按钮变成完成并关掉卡片', (tester) async {
     usePhoneSurface(tester);
     useStubParseBackend(data: stubVideoOnlyData);
-    useStubDownloader();
+    final dl = useStubDownloader();
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(
@@ -203,9 +194,9 @@ void main() {
     usePhoneSurface(tester);
     final video = useFakeVideoPlayer();
     useStubParseBackend(data: stubVideoOnlyData);
-    useStubDownloader();
+    final dl = useStubDownloader();
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(
@@ -279,17 +270,17 @@ void main() {
         ],
       },
     );
-    useStubDownloader();
     final items = <DownloadItem>[];
-    Downloader.fetchImpl =
-        (item, temp, onFraction, cancelled, onSize, client) async {
-          items.add(item);
-          onSize?.call(100);
-          onFraction(1);
-          return File('${temp.path}/${item.fileName}');
-        };
+    final dl = useStubDownloader(
+      fetch: (item, ctx) async {
+        items.add(item);
+        ctx.onSize?.call(100);
+        ctx.onFraction(1);
+        return File('${ctx.temp.path}/${item.fileName}');
+      },
+    );
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(
@@ -328,17 +319,17 @@ void main() {
         'image_list': <dynamic>['https://example.invalid/1.jpg'],
       },
     );
-    useStubDownloader();
     final items = <DownloadItem>[];
-    Downloader.fetchImpl =
-        (item, temp, onFraction, cancelled, onSize, client) async {
-          items.add(item);
-          onSize?.call(100);
-          onFraction(1);
-          return File('${temp.path}/${item.fileName}');
-        };
+    final dl = useStubDownloader(
+      fetch: (item, ctx) async {
+        items.add(item);
+        ctx.onSize?.call(100);
+        ctx.onFraction(1);
+        return File('${ctx.temp.path}/${item.fileName}');
+      },
+    );
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const LiquidGlassDemo());
+    await tester.pumpWidget(LiquidGlassDemo(downloader: dl));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.enterText(
@@ -373,25 +364,25 @@ void main() {
   testWidgets('下载器:多条并发下,不是一条一条排队', (tester) async {
     // 只为了拿到 path_provider 的假实现
     usePhoneSurface(tester);
-    useStubDownloader();
 
     var running = 0;
     var peak = 0;
-    Downloader.fetchImpl =
-        (item, temp, onFraction, cancelled, onSize, client) async {
-          running++;
-          peak = running > peak ? running : peak;
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-          running--;
-          onFraction(1);
-          return File('${temp.path}/${item.fileName}');
-        };
+    final dl = useStubDownloader(
+      fetch: (item, ctx) async {
+        running++;
+        peak = running > peak ? running : peak;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        running--;
+        ctx.onFraction(1);
+        return File('${ctx.temp.path}/${item.fileName}');
+      },
+    );
 
     var last = 0.0;
     // 不 await,改成让用例自己推时钟:testWidgets 里默认是假时钟,直接 await
     // 会一直等真定时器(挂到用例超时)。推时钟还能顺带看并发峰值中间态。
     // 也刻意不用 runAsync —— 真异步工作跨用例残留会打乱后面的用例。
-    final done = Downloader.saveAll([
+    final done = dl.saveAll([
       for (var i = 0; i < 8; i++)
         DownloadItem(
           url: 'https://example.invalid/$i',
@@ -407,7 +398,7 @@ void main() {
 
     // 串行的话同一时刻只会有一条在跑;并发才会看到多条叠在一起
     expect(peak, greaterThan(1));
-    expect(peak, lessThanOrEqualTo(Downloader.concurrency));
+    expect(peak, lessThanOrEqualTo(dl.tuning.concurrency));
     // 收尾必须报满
     expect(last, 1.0);
   });

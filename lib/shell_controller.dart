@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'history_store.dart';
+import 'downloader.dart';
 import 'parse_service.dart';
 import 'ui/prefs.dart';
 
@@ -52,6 +53,12 @@ abstract interface class ShellController {
 
   /// 解析服务。页面拿它读 `lastRoute` 之类的排障信息。
   ParseService get parseService;
+
+  /// 下载器。页面拿它下载(见 [Downloader.saveAll])、选目录([Downloader.pickFolder])。
+  ///
+  /// 走接口而不是直接摸全局那一份(appDownloader),是为了 widget 测试能换成假
+  /// 引擎 / 假落盘:Inject 点是 LiquidGlassDemo 的 `downloader` 参数。
+  Downloader get downloader;
 
   /// 首页那个粘贴输入框的控制器。
   TextEditingController get linkController;

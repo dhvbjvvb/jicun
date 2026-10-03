@@ -418,7 +418,7 @@ class PreviewCardState extends State<PreviewCard> {
       total: items.length,
       run: (onProgress, cancelled) async {
         try {
-          await Downloader.saveAll(
+          await app.downloader.saveAll(
             items,
             onProgress: onProgress,
             cancelled: cancelled,

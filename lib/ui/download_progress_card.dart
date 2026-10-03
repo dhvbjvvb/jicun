@@ -91,7 +91,7 @@ class DownloadProgressCardState extends State<DownloadProgressCard> {
   /// 这次下载收了多少字节,以及从开始到现在过了多久。用来算实时速度。
   ///
   /// 两个都要:**只有字节数看不出快慢**,要除时间才是 MB/s。这也让"调分段数到底
-  /// 有没有用"变成屏幕上能看懂的一个数字(见 Downloader.maxSegments 的注释)。
+  /// 有没有用"变成屏幕上能看懂的一个数字(见 [DownloadTuning.maxSegments])。
   int _received = 0;
   final Stopwatch clock = Stopwatch();
 

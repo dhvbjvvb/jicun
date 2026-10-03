@@ -29,11 +29,8 @@ void main() {
         kind: MediaKind.video,
       ),
     ];
-    final first = Downloader.nativeDownload(
-      items,
-      temp: temp,
-      onProgress: (_) {},
-    );
+    final dl = Downloader();
+    final first = dl.nativeDownload(items, temp: temp, onProgress: (_) {});
 
     // 进度回调是通道级全局的(dnProgress / dnDone 不带任务 id),第二个任务会把两条
     // 下载的进度算到一起 —— 所以这里必须是硬约束,不是注释里的君子协定。
@@ -41,7 +38,7 @@ void main() {
     // 期望的是 [StateError] 而不是断言错误:这条约束以前写成 `assert`,release 上
     // 直接消失(而进度串了不会崩,只会让用户看到一个往回跳的百分比)。
     expect(
-      () => Downloader.nativeDownload(items, temp: temp, onProgress: (_) {}),
+      () => dl.nativeDownload(items, temp: temp, onProgress: (_) {}),
       throwsStateError,
     );
 
@@ -101,7 +98,8 @@ void main() {
       });
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-      final future = Downloader.nativeDownload(
+      final dl = Downloader();
+      final future = dl.nativeDownload(
         [
           DownloadItem(
             url: 'https://example.invalid/video',
@@ -130,13 +128,15 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_native_order');
     addTearDown(() => temp.deleteSync(recursive: true));
     final published = <String, String>{};
-    final realPublish = Downloader.publishImpl;
-    Downloader.publishImpl = (item, file) async {
-      published[item.url] = item.fileName;
-      file.deleteSync();
-      return null;
-    };
-    addTearDown(() => Downloader.publishImpl = realPublish);
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          published[item.url] = item.fileName;
+          file.deleteSync();
+          return null;
+        },
+      ),
+    );
 
     // 真的文件头:图片认成 .jpg,视频认成 .mp4。
     final jpeg = <int>[
@@ -217,7 +217,7 @@ void main() {
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    await Downloader.nativeDownload(
+    await dl.nativeDownload(
       [
         DownloadItem(
           url: 'https://example.invalid/photo',
@@ -245,28 +245,30 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_native_progress');
     addTearDown(() => temp.deleteSync(recursive: true));
     final fractions = <double>[];
-    final realPublish = Downloader.publishImpl;
-    Downloader.publishImpl = (item, file) async {
-      // 还没写进相册:此刻正好是 50%(网络那一遍搬完了,相册这一遍还没开始)
-      expect(fractions.last, 0.5);
-      // 原生报"写了一半":环得跟着往前走 —— 这一段原来正是钉死不动的那一段
-      await messenger.handlePlatformMessage(
-        channel.name,
-        channel.codec.encodeMethodCall(
-          const MethodCall('dnCopyProgress', <String, Object?>{
-            'copied': 50,
-            'total': 100,
-          }),
-        ),
-        null,
-      );
-      expect(fractions.last, 0.75);
-      // **100% 不早于"已入库"**:这一刻还没进相册,就不该是满的
-      expect(fractions.last, lessThan(1.0));
-      file.deleteSync();
-      return null;
-    };
-    addTearDown(() => Downloader.publishImpl = realPublish);
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          // 还没写进相册:此刻正好是 50%(网络那一遍搬完了,相册这一遍还没开始)
+          expect(fractions.last, 0.5);
+          // 原生报"写了一半":环得跟着往前走 —— 这一段原来正是钉死不动的那一段
+          await messenger.handlePlatformMessage(
+            channel.name,
+            channel.codec.encodeMethodCall(
+              const MethodCall('dnCopyProgress', <String, Object?>{
+                'copied': 50,
+                'total': 100,
+              }),
+            ),
+            null,
+          );
+          expect(fractions.last, 0.75);
+          // **100% 不早于"已入库"**:这一刻还没进相册,就不该是满的
+          expect(fractions.last, lessThan(1.0));
+          file.deleteSync();
+          return null;
+        },
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'downloadMany') {
@@ -313,7 +315,7 @@ void main() {
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    await Downloader.nativeDownload(
+    await dl.nativeDownload(
       [
         DownloadItem(
           url: 'https://example.invalid/video',
@@ -339,20 +341,22 @@ void main() {
     addTearDown(() => temp.deleteSync(recursive: true));
     final fractions = <double>[];
     var publishes = 0;
-    final realPublish = Downloader.publishImpl;
-    Downloader.publishImpl = (item, file) async {
-      publishes++;
-      if (publishes == 1) {
-        expect(fractions.last, 0.5, reason: '网络收完,一条都还没入库');
-      } else {
-        // 第一条已经入库、第二条还没:(200 + 100) / 400 = 0.75
-        expect(fractions.last, 0.75, reason: '只进了一条');
-        expect(fractions.last, lessThan(1.0), reason: '还有一条没入库,不能报满');
-      }
-      file.deleteSync();
-      return null;
-    };
-    addTearDown(() => Downloader.publishImpl = realPublish);
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          publishes++;
+          if (publishes == 1) {
+            expect(fractions.last, 0.5, reason: '网络收完,一条都还没入库');
+          } else {
+            // 第一条已经入库、第二条还没:(200 + 100) / 400 = 0.75
+            expect(fractions.last, 0.75, reason: '只进了一条');
+            expect(fractions.last, lessThan(1.0), reason: '还有一条没入库,不能报满');
+          }
+          file.deleteSync();
+          return null;
+        },
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'downloadMany') {
@@ -403,7 +407,7 @@ void main() {
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    await Downloader.nativeDownload(
+    await dl.nativeDownload(
       [
         DownloadItem(
           url: 'https://example.invalid/a',
@@ -431,12 +435,14 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_native_late');
     addTearDown(() => temp.deleteSync(recursive: true));
     final published = <String>[];
-    final realPublish = Downloader.publishImpl;
-    Downloader.publishImpl = (item, file) async {
-      published.add(item.fileName);
-      return 'uri://${item.fileName}';
-    };
-    addTearDown(() => Downloader.publishImpl = realPublish);
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          published.add(item.fileName);
+          return 'uri://${item.fileName}';
+        },
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'downloadMany') return null;
@@ -472,7 +478,7 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
     await expectLater(
-      Downloader.nativeDownload(
+      dl.nativeDownload(
         [
           DownloadItem(
             url: 'https://example.invalid/video',
@@ -500,19 +506,17 @@ void main() {
     addTearDown(() => temp.deleteSync(recursive: true));
     final published = <String>[];
     final unpublished = <String>[];
-    final realPublish = Downloader.publishImpl;
-    final realUnpublish = Downloader.unpublishImpl;
-    Downloader.publishImpl = (item, file) async {
-      published.add(item.fileName);
-      // 登记 = 拷进媒体库,临时文件跟着删掉
-      file.deleteSync();
-      return 'uri://${item.fileName}';
-    };
-    Downloader.unpublishImpl = (uri) async => unpublished.add(uri);
-    addTearDown(() {
-      Downloader.publishImpl = realPublish;
-      Downloader.unpublishImpl = realUnpublish;
-    });
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          published.add(item.fileName);
+          // 登记 = 拷进媒体库,临时文件跟着删掉
+          file.deleteSync();
+          return 'uri://${item.fileName}';
+        },
+        unpublish: (uri) async => unpublished.add(uri),
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'downloadMany') return null;
@@ -551,7 +555,7 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
     await expectLater(
-      Downloader.nativeDownload(
+      dl.nativeDownload(
         [
           DownloadItem(
             url: 'https://example.invalid/a',
@@ -583,18 +587,16 @@ void main() {
     addTearDown(() => temp.deleteSync(recursive: true));
     final published = <String>[];
     final unpublished = <String>[];
-    final realPublish = Downloader.publishImpl;
-    final realUnpublish = Downloader.unpublishImpl;
-    Downloader.publishImpl = (item, file) async {
-      published.add(item.fileName);
-      file.deleteSync();
-      return 'uri://${item.fileName}';
-    };
-    Downloader.unpublishImpl = (uri) async => unpublished.add(uri);
-    addTearDown(() {
-      Downloader.publishImpl = realPublish;
-      Downloader.unpublishImpl = realUnpublish;
-    });
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          published.add(item.fileName);
+          file.deleteSync();
+          return 'uri://${item.fileName}';
+        },
+        unpublish: (uri) async => unpublished.add(uri),
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'downloadMany') return null;
@@ -636,7 +638,7 @@ void main() {
     // 原生两条都下成了,登记途中用户按了取消:第 1 张已经写进相册(留着),
     // 第 2 张不许再写,它的临时文件跟着清掉
     await expectLater(
-      Downloader.nativeDownload(
+      dl.nativeDownload(
         [
           DownloadItem(
             url: 'https://example.invalid/a',
@@ -668,13 +670,15 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_native_single');
     addTearDown(() => temp.deleteSync(recursive: true));
     final published = <String>[];
-    final realPublish = Downloader.publishImpl;
-    Downloader.publishImpl = (item, file) async {
-      published.add(item.fileName);
-      file.deleteSync();
-      return 'uri://${item.fileName}';
-    };
-    addTearDown(() => Downloader.publishImpl = realPublish);
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          published.add(item.fileName);
+          file.deleteSync();
+          return 'uri://${item.fileName}';
+        },
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'downloadMany') return null;
@@ -711,7 +715,7 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
     await expectLater(
-      Downloader.nativeDownload(
+      dl.nativeDownload(
         [
           DownloadItem(
             url: 'https://example.invalid/video',
@@ -737,22 +741,20 @@ void main() {
     addTearDown(() => temp.deleteSync(recursive: true));
     final published = <String>[];
     final unpublished = <String>[];
-    final realPublish = Downloader.publishImpl;
-    final realUnpublish = Downloader.unpublishImpl;
-    Downloader.publishImpl = (item, file) async {
-      // 第 2 条被媒体库拒收:这是"失败",不是"取消"
-      if (item.fileName.startsWith('图集_2')) {
-        throw Exception('媒体库不接受这个文件');
-      }
-      published.add(item.fileName);
-      file.deleteSync();
-      return 'uri://${item.fileName}';
-    };
-    Downloader.unpublishImpl = (uri) async => unpublished.add(uri);
-    addTearDown(() {
-      Downloader.publishImpl = realPublish;
-      Downloader.unpublishImpl = realUnpublish;
-    });
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          // 第 2 条被媒体库拒收:这是"失败",不是"取消"
+          if (item.fileName.startsWith('图集_2')) {
+            throw Exception('媒体库不接受这个文件');
+          }
+          published.add(item.fileName);
+          file.deleteSync();
+          return 'uri://${item.fileName}';
+        },
+        unpublish: (uri) async => unpublished.add(uri),
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'downloadMany') return null;
@@ -792,7 +794,7 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
     await expectLater(
-      Downloader.nativeDownload(
+      dl.nativeDownload(
         [
           DownloadItem(
             url: 'https://example.invalid/a',
@@ -824,13 +826,15 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('jicun_native_partial');
     addTearDown(() => temp.deleteSync(recursive: true));
     final published = <String>[];
-    final realPublish = Downloader.publishImpl;
-    Downloader.publishImpl = (item, file) async {
-      published.add(item.fileName);
-      file.deleteSync();
-      return 'uri://${item.fileName}';
-    };
-    addTearDown(() => Downloader.publishImpl = realPublish);
+    final dl = Downloader(
+      deps: DownloadDeps(
+        publish: (item, file) async {
+          published.add(item.fileName);
+          file.deleteSync();
+          return 'uri://${item.fileName}';
+        },
+      ),
+    );
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'downloadMany') return null;
@@ -869,7 +873,7 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
     await expectLater(
-      Downloader.nativeDownload(
+      dl.nativeDownload(
         [
           DownloadItem(
             url: 'https://example.invalid/a',

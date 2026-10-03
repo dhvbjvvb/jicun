@@ -554,7 +554,11 @@ Future<double> dragPastTop(
 /// 把下载换成假的:每 100ms 走 10%,用户可以中途取消。
 ///
 /// 真实现要发网络请求,用例里既慢又碰运气,所以只测卡片自己的行为。
-void useStubDownloader() {
+///
+/// 返回的这一份下载器要喂给 [LiquidGlassDemo] 的 `downloader` 参数 —— 页面是从
+/// `ShellController.downloader` 拿下载器的,已经没有一个能全局改的静态替身字段。
+/// [fetch] 想自己拿捏字节流就传一份(开头就砸、记并发峰值之类)。
+Downloader useStubDownloader({DownloadFetcher? fetch}) {
   // 下载第一步要问系统要临时目录。测试里没有真的 path_provider 插件,
   // 不接一下这一步就抛 MissingPluginException,进度一直停在 0%。
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -572,21 +576,22 @@ void useStubDownloader() {
         ),
   );
 
-  final realFetch = Downloader.fetchImpl;
-  final realPublish = Downloader.publishImpl;
-  Downloader.fetchImpl =
-      (item, temp, onFraction, cancelled, onSize, client) async {
-        onSize?.call(100);
-        for (var i = 1; i <= 10; i++) {
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-          if (cancelled?.call() ?? false) throw const DownloadCancelled();
-          onFraction(i / 10);
-        }
-        return File('${temp.path}/${item.fileName}');
-      };
-  Downloader.publishImpl = (item, file) async => null;
-  addTearDown(() {
-    Downloader.fetchImpl = realFetch;
-    Downloader.publishImpl = realPublish;
-  });
+  return Downloader(
+    useDartEngine: true,
+    deps: DownloadDeps(
+      fetch: fetch ?? _stubFetch,
+      publish: (item, file) async => null,
+    ),
+  );
+}
+
+/// [useStubDownloader] 默认那份假收流:每 100ms 走 10%。
+Future<File> _stubFetch(DownloadItem item, FetchContext ctx) async {
+  ctx.onSize?.call(100);
+  for (var i = 1; i <= 10; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (ctx.cancelled?.call() ?? false) throw const DownloadCancelled();
+    ctx.onFraction(i / 10);
+  }
+  return File('${ctx.temp.path}/${item.fileName}');
 }

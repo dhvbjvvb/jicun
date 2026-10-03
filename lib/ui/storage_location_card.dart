@@ -66,7 +66,7 @@ class _StorageLocationCardState extends State<StorageLocationCard> {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      final target = await Downloader.pickFolder();
+      final target = await widget.app.downloader.pickFolder();
       // 用户按返回取消:null,保持原样。
       if (!mounted || target == null) return;
       Downloader.customStorage[kind] = target;

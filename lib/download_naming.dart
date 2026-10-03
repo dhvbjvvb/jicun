@@ -37,7 +37,7 @@ String _stemOf(String fileName) {
 /// 4.23MB 的 GIF89a,只是名字错了)。文件内容一直是原样的,这里只改名字,不重新
 /// 编码 —— 一旦解码再编码,动图必然被压成第一帧。
 ///
-/// 改的是 **`item.fileName` 本身**:`publishImpl` 拿它当 MediaStore 的
+/// 改的是 **`item.fileName` 本身**:`publish` 拿它当 MediaStore 的
 /// `DISPLAY_NAME`,只改临时文件的话相册里还是错后缀(实测就是这么漏过去的)。
 ///
 /// 名字里那段 `.part` 也在这里掉:临时目录里它防的是"下了一半的文件被当成成品",
