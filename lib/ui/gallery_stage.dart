@@ -218,23 +218,10 @@ class GalleryTile extends StatelessWidget {
             const Positioned(
               right: 4,
               bottom: 4,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0x8C000000),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(3),
-                  child: Icon(
-                    CupertinoIcons.play_fill,
-                    size: 11,
-                    color: Color(0xFFFFFFFF),
-                  ),
-                ),
-              ),
+              child: _Badge(CupertinoIcons.play_fill),
             ),
-          // 图片那几格右下角压一只眼睛,和视频的播放标识同一处、同一套底(半透明黑圆
-          // 加白色图形),一眼分得出这格是图片、点它能看大图。
+          // 图片那几格右下角压一只眼睛,和视频的播放标识同一处、同一套底,一眼分得出
+          // 这格是图片、点它能看大图。
           //
           // 触摸区比标识本身大一圈(标识 17,这里 29):11 像素的图形手指按不准。
           // 这层在 Stack 里排在后面,命中最先落到它身上,外层那颗「点图选中」不会
@@ -251,20 +238,7 @@ class GalleryTile extends StatelessWidget {
                   behavior: HitTestBehavior.opaque,
                   child: const Padding(
                     padding: EdgeInsets.fromLTRB(8, 8, 4, 4),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0x8C000000),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(3),
-                        child: Icon(
-                          CupertinoIcons.eye_fill,
-                          size: 11,
-                          color: Color(0xFFFFFFFF),
-                        ),
-                      ),
-                    ),
+                    child: _Badge(CupertinoIcons.eye_fill),
                   ),
                 ),
               ),
@@ -309,6 +283,27 @@ class GalleryTile extends StatelessWidget {
       child: tile,
     );
   }
+}
+
+/// 压在缩略图右下角的小圆标:半透明黑底 + 白色图形。
+///
+/// 视频格用播放标识、图片格用眼睛 —— 位置和底只留这一份,两格的观感才一致。
+class _Badge extends StatelessWidget {
+  const _Badge(this.icon);
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      shape: BoxShape.circle,
+      color: Color(0x8C000000),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(3),
+      child: Icon(icon, size: 11, color: const Color(0xFFFFFFFF)),
+    ),
+  );
 }
 
 /// 点缩略图右下角那只眼睛弹出来的大图预览。

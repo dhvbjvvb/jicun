@@ -230,23 +230,14 @@ class VideoStageState extends State<VideoStage> {
     final controller = _controller;
 
     if (controller == null || _failed) {
-      return Column(
-        children: [
-          _frame(_poster(secondary)),
-          const SizedBox(height: 12),
-          PlaybackPanel(
-            isDark: isDark,
-            child: PlaybackRow(
-              isDark: isDark,
-              playing: false,
-              position: Duration.zero,
-              duration: null,
-              enabled: false,
-              onToggle: () {},
-              onSeek: (_) {},
-            ),
-          ),
-        ],
+      return _stage(
+        _poster(secondary),
+        playing: false,
+        position: Duration.zero,
+        duration: null,
+        enabled: false,
+        onToggle: () {},
+        onSeek: (_) {},
       );
     }
 
@@ -277,78 +268,79 @@ class VideoStageState extends State<VideoStage> {
             : 0.0;
         final tooWide = ready && videoAspect > 16 / 9;
 
-        return Column(
-          children: [
-            _frame(
-              Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (ready)
-                    FittedBox(
-                      fit: tooWide ? BoxFit.cover : BoxFit.contain,
-                      child: SizedBox(
-                        width: value.size.width,
-                        height: value.size.height,
-                        child: VideoPlayer(controller),
-                      ),
-                    ),
-                  // 封面压在画面上,开始播放后淡出 —— 淡出这 320ms 正好留给
-                  // 首帧解码,不然按下播放会先闪一下黑。
-                  AnimatedOpacity(
-                    opacity: showFrame ? 0 : 1,
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOut,
-                    child: IgnorePointer(child: _poster(secondary)),
+        return _stage(
+          Stack(
+            fit: StackFit.expand,
+            children: [
+              if (ready)
+                FittedBox(
+                  fit: tooWide ? BoxFit.cover : BoxFit.contain,
+                  child: SizedBox(
+                    width: value.size.width,
+                    height: value.size.height,
+                    child: VideoPlayer(controller),
                   ),
-                  // 左右滑动画面调进度。放最上层,免得手势被视频层吃掉。
-                  Positioned.fill(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onHorizontalDragUpdate: (details) {
-                          if (duration == null ||
-                              duration.inMicroseconds <= 0 ||
-                              constraints.maxWidth <= 0) {
-                            return;
-                          }
-                          final delta = Duration(
-                            microseconds:
-                                (details.delta.dx /
-                                        constraints.maxWidth *
-                                        duration.inMicroseconds)
-                                    .round(),
-                          );
-                          final target = value.position + delta;
-                          _seekTo(
-                            target < Duration.zero
-                                ? Duration.zero
-                                : (target > duration ? duration : target),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
+                ),
+              // 封面压在画面上,开始播放后淡出 —— 淡出这 320ms 正好留给
+              // 首帧解码,不然按下播放会先闪一下黑。
+              AnimatedOpacity(
+                opacity: showFrame ? 0 : 1,
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOut,
+                child: IgnorePointer(child: _poster(secondary)),
               ),
-            ),
-            const SizedBox(height: 12),
-            PlaybackPanel(
-              isDark: isDark,
-              child: PlaybackRow(
-                isDark: isDark,
-                playing: value.isPlaying,
-                position: value.position,
-                duration: duration,
-                enabled: true,
-                onToggle: _toggle,
-                onSeek: _seekTo,
+              // 左右滑动画面调进度。放最上层,免得手势被视频层吃掉。
+              Positioned.fill(
+                child: _SeekDragArea(
+                  position: value.position,
+                  duration: duration,
+                  onSeek: _seekTo,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+          playing: value.isPlaying,
+          position: value.position,
+          duration: duration,
+          enabled: true,
+          onToggle: _toggle,
+          onSeek: _seekTo,
         );
       },
     );
   }
+
+  /// 画面框 + 底下那排播放控制。
+  ///
+  /// 「还没拿到播放器」和「正在播」两条路只有这几处数据不同(在放什么、放到哪、
+  /// 能不能点、点了给谁),排版只有这一份:以前这里是两段抄了 18 行的 Column,
+  /// 改一处就得记着改另一处。
+  Widget _stage(
+    Widget picture, {
+    required bool playing,
+    required Duration position,
+    required Duration? duration,
+    required bool enabled,
+    required VoidCallback onToggle,
+    required ValueChanged<Duration> onSeek,
+  }) => Column(
+    children: [
+      _frame(picture),
+      const SizedBox(height: 12),
+      PlaybackPanel(
+        isDark: widget.isDark,
+        child: PlaybackRow(
+          isDark: widget.isDark,
+          playing: playing,
+          position: position,
+          duration: duration,
+          enabled: enabled,
+          onToggle: onToggle,
+          onSeek: onSeek,
+        ),
+      ),
+    ],
+  );
 
   /// 16:9 的画面框,圆角与底色和另外几块预览区一致。
   Widget _frame(Widget child) => ClipRRect(
@@ -358,4 +350,53 @@ class VideoStageState extends State<VideoStage> {
       child: ColoredBox(color: const Color(0xFF000000), child: child),
     ),
   );
+}
+
+/// 画面上左右滑动调进度的那一层。
+///
+/// 单独一个类,是为了让 [VideoStageState.build] 读起来还是「画面 + 控制条」,
+/// 中间不用插三十行进度换算。
+class _SeekDragArea extends StatelessWidget {
+  const _SeekDragArea({
+    required this.position,
+    required this.duration,
+    required this.onSeek,
+  });
+
+  /// 当前进度,拖动时的起点。
+  final Duration position;
+
+  /// 总时长。还没解析出来时为 null,那就不响应拖动。
+  final Duration? duration;
+
+  final ValueChanged<Duration> onSeek;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (details) {
+          final total = duration;
+          if (total == null ||
+              total.inMicroseconds <= 0 ||
+              constraints.maxWidth <= 0) {
+            return;
+          }
+          // 横向拖了多长的像素,按画面宽度折算成时间;结果夹回 0..总时长。
+          final delta = Duration(
+            microseconds:
+                (details.delta.dx / constraints.maxWidth * total.inMicroseconds)
+                    .round(),
+          );
+          final target = position + delta;
+          onSeek(
+            target < Duration.zero
+                ? Duration.zero
+                : (target > total ? total : target),
+          );
+        },
+      ),
+    );
+  }
 }
