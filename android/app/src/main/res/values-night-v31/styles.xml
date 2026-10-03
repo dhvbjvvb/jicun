@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 同 values-v31/styles.xml,深色主题那份。区别只有底色:这里用 #434343,
+         也就是深色那层渐变的下端。**刻意不取渐变的中点** —— 鸟的脚是深墨色、
+         直接压在底色上,底色再压暗一档(#212121 试过)脚就和底融成一片,启动图里
+         的鸟看着像没有脚(见 values-night/colors.xml)。
+
+         限定符目录里的同名 style 替换掉 values-night/ 里那一份,条目不会合并,
+         所以 windowBackground 要在这儿再写一遍。 -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_background_color</item>
+        <!-- 和浅色共用同一张图:白身 + 深描边在黑→灰的底上照样立得住。 -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+    </style>
+</resources>

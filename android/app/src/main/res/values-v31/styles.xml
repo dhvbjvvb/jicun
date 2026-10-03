@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ (API 31) 的冷启动画面由系统 SplashScreen API 接管,不再看
+         windowBackground 那张 layer-list:系统只会从主题里取一个**纯色**当底,
+         而 layer-list 取不到颜色 → 底色退成透明,于是先黑一下(深色主题)/白一下
+         (浅色主题)才跳到我们的底色。
+
+         所以这里显式给一个底,和 drawable/launch_background.xml 用的是同一个色值。
+
+         注意:限定符目录里的同名 style **替换**掉 values/ 里那一份,不会合并条目,
+         所以 windowBackground 必须在这儿再写一遍。
+
+         下面那两条(LaunchThemeLight/Dark)是启动入口自己的主题:同样是「同名替换」,
+         所以各自的 windowBackground 也重写了一遍。它们**刻意不跟 night 走** ——
+         取哪一档由启用的是哪个启动组件决定,不由系统深浅决定(见 values/styles.xml
+         里那段说明)。 -->
+    <style name="LaunchThemeLight" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_light</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_light</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+    </style>
+    <style name="LaunchThemeDark" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_dark</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_dark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+    </style>
+
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_background_color</item>
+        <!-- 启动图。12+ 会把这张图放进 288dp 的画布、遮罩只留中间 192dp(2/3):
+             平台给的原图四周留白本来就大(鸟只占画布宽度的 44%),稳稳在安全区里,
+             不用为了避裁切去动图。 -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+    </style>
+</resources>

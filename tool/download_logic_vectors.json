@@ -1,0 +1,1150 @@
+{
+ "note": "下载器纯逻辑的测试向量。Dart/Kotlin 共用;生成见 tool/gen_logic_vectors.py。",
+ "chunkCases": [
+  {
+   "name": "plain-1-1",
+   "size": 1,
+   "chunk": 1,
+   "rows": [
+    [
+     0,
+     0
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-1-1024",
+   "size": 1,
+   "chunk": 1024,
+   "rows": [
+    [
+     0,
+     0
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-1-4096",
+   "size": 1,
+   "chunk": 4096,
+   "rows": [
+    [
+     0,
+     0
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-1-1048576",
+   "size": 1,
+   "chunk": 1048576,
+   "rows": [
+    [
+     0,
+     0
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-100-1",
+   "size": 100,
+   "chunk": 1,
+   "rows": null,
+   "covers": true,
+   "claims": 100
+  },
+  {
+   "name": "plain-100-1024",
+   "size": 100,
+   "chunk": 1024,
+   "rows": [
+    [
+     0,
+     99
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-100-4096",
+   "size": 100,
+   "chunk": 4096,
+   "rows": [
+    [
+     0,
+     99
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-100-1048576",
+   "size": 100,
+   "chunk": 1048576,
+   "rows": [
+    [
+     0,
+     99
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-4095-1",
+   "size": 4095,
+   "chunk": 1,
+   "rows": null,
+   "covers": true,
+   "claims": 4095
+  },
+  {
+   "name": "plain-4095-1024",
+   "size": 4095,
+   "chunk": 1024,
+   "rows": [
+    [
+     0,
+     1023
+    ],
+    [
+     1024,
+     2047
+    ],
+    [
+     2048,
+     3071
+    ],
+    [
+     3072,
+     4094
+    ]
+   ],
+   "covers": true,
+   "claims": 4
+  },
+  {
+   "name": "plain-4095-4096",
+   "size": 4095,
+   "chunk": 4096,
+   "rows": [
+    [
+     0,
+     4094
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-4095-1048576",
+   "size": 4095,
+   "chunk": 1048576,
+   "rows": [
+    [
+     0,
+     4094
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-4096-1",
+   "size": 4096,
+   "chunk": 1,
+   "rows": null,
+   "covers": true,
+   "claims": 4096
+  },
+  {
+   "name": "plain-4096-1024",
+   "size": 4096,
+   "chunk": 1024,
+   "rows": [
+    [
+     0,
+     1023
+    ],
+    [
+     1024,
+     2047
+    ],
+    [
+     2048,
+     3071
+    ],
+    [
+     3072,
+     4095
+    ]
+   ],
+   "covers": true,
+   "claims": 4
+  },
+  {
+   "name": "plain-4096-4096",
+   "size": 4096,
+   "chunk": 4096,
+   "rows": [
+    [
+     0,
+     4095
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-4096-1048576",
+   "size": 4096,
+   "chunk": 1048576,
+   "rows": [
+    [
+     0,
+     4095
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-4097-1",
+   "size": 4097,
+   "chunk": 1,
+   "rows": null,
+   "covers": true,
+   "claims": 4097
+  },
+  {
+   "name": "plain-4097-1024",
+   "size": 4097,
+   "chunk": 1024,
+   "rows": [
+    [
+     0,
+     1023
+    ],
+    [
+     1024,
+     2047
+    ],
+    [
+     2048,
+     3071
+    ],
+    [
+     3072,
+     4095
+    ],
+    [
+     4096,
+     4096
+    ]
+   ],
+   "covers": true,
+   "claims": 5
+  },
+  {
+   "name": "plain-4097-4096",
+   "size": 4097,
+   "chunk": 4096,
+   "rows": [
+    [
+     0,
+     4095
+    ],
+    [
+     4096,
+     4096
+    ]
+   ],
+   "covers": true,
+   "claims": 2
+  },
+  {
+   "name": "plain-4097-1048576",
+   "size": 4097,
+   "chunk": 1048576,
+   "rows": [
+    [
+     0,
+     4096
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-1048576-1024",
+   "size": 1048576,
+   "chunk": 1024,
+   "rows": null,
+   "covers": true,
+   "claims": 1024
+  },
+  {
+   "name": "plain-1048576-4096",
+   "size": 1048576,
+   "chunk": 4096,
+   "rows": null,
+   "covers": true,
+   "claims": 256
+  },
+  {
+   "name": "plain-1048576-1048576",
+   "size": 1048576,
+   "chunk": 1048576,
+   "rows": [
+    [
+     0,
+     1048575
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "plain-160432128-1024",
+   "size": 160432128,
+   "chunk": 1024,
+   "rows": null,
+   "covers": true,
+   "claims": 156672
+  },
+  {
+   "name": "plain-160432128-4096",
+   "size": 160432128,
+   "chunk": 4096,
+   "rows": null,
+   "covers": true,
+   "claims": 39168
+  },
+  {
+   "name": "plain-160432128-1048576",
+   "size": 160432128,
+   "chunk": 1048576,
+   "rows": null,
+   "covers": true,
+   "claims": 153
+  }
+ ],
+ "tailCases": [
+  {
+   "name": "tail-1",
+   "size": 1,
+   "chunk": 4194304,
+   "tail": 33554432,
+   "tailChunk": 1048576,
+   "rows": [
+    [
+     0,
+     0
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "tail-100",
+   "size": 100,
+   "chunk": 4194304,
+   "tail": 33554432,
+   "tailChunk": 1048576,
+   "rows": [
+    [
+     0,
+     99
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "tail-4095",
+   "size": 4095,
+   "chunk": 4194304,
+   "tail": 33554432,
+   "tailChunk": 1048576,
+   "rows": [
+    [
+     0,
+     4094
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "tail-4096",
+   "size": 4096,
+   "chunk": 4194304,
+   "tail": 33554432,
+   "tailChunk": 1048576,
+   "rows": [
+    [
+     0,
+     4095
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "tail-4097",
+   "size": 4097,
+   "chunk": 4194304,
+   "tail": 33554432,
+   "tailChunk": 1048576,
+   "rows": [
+    [
+     0,
+     4096
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "tail-1048576",
+   "size": 1048576,
+   "chunk": 4194304,
+   "tail": 33554432,
+   "tailChunk": 1048576,
+   "rows": [
+    [
+     0,
+     1048575
+    ]
+   ],
+   "covers": true,
+   "claims": 1
+  },
+  {
+   "name": "tail-160432128",
+   "size": 160432128,
+   "chunk": 4194304,
+   "tail": 33554432,
+   "tailChunk": 1048576,
+   "rows": [
+    [
+     0,
+     4194303
+    ],
+    [
+     4194304,
+     8388607
+    ],
+    [
+     8388608,
+     12582911
+    ],
+    [
+     12582912,
+     16777215
+    ],
+    [
+     16777216,
+     20971519
+    ],
+    [
+     20971520,
+     25165823
+    ],
+    [
+     25165824,
+     29360127
+    ],
+    [
+     29360128,
+     33554431
+    ],
+    [
+     33554432,
+     37748735
+    ],
+    [
+     37748736,
+     41943039
+    ],
+    [
+     41943040,
+     46137343
+    ],
+    [
+     46137344,
+     50331647
+    ],
+    [
+     50331648,
+     54525951
+    ],
+    [
+     54525952,
+     58720255
+    ],
+    [
+     58720256,
+     62914559
+    ],
+    [
+     62914560,
+     67108863
+    ],
+    [
+     67108864,
+     71303167
+    ],
+    [
+     71303168,
+     75497471
+    ],
+    [
+     75497472,
+     79691775
+    ],
+    [
+     79691776,
+     83886079
+    ],
+    [
+     83886080,
+     88080383
+    ],
+    [
+     88080384,
+     92274687
+    ],
+    [
+     92274688,
+     96468991
+    ],
+    [
+     96468992,
+     100663295
+    ],
+    [
+     100663296,
+     104857599
+    ],
+    [
+     104857600,
+     109051903
+    ],
+    [
+     109051904,
+     113246207
+    ],
+    [
+     113246208,
+     117440511
+    ],
+    [
+     117440512,
+     121634815
+    ],
+    [
+     121634816,
+     125829119
+    ],
+    [
+     125829120,
+     126877695
+    ],
+    [
+     126877696,
+     127926271
+    ],
+    [
+     127926272,
+     128974847
+    ],
+    [
+     128974848,
+     130023423
+    ],
+    [
+     130023424,
+     131071999
+    ],
+    [
+     131072000,
+     132120575
+    ],
+    [
+     132120576,
+     133169151
+    ],
+    [
+     133169152,
+     134217727
+    ],
+    [
+     134217728,
+     135266303
+    ],
+    [
+     135266304,
+     136314879
+    ],
+    [
+     136314880,
+     137363455
+    ],
+    [
+     137363456,
+     138412031
+    ],
+    [
+     138412032,
+     139460607
+    ],
+    [
+     139460608,
+     140509183
+    ],
+    [
+     140509184,
+     141557759
+    ],
+    [
+     141557760,
+     142606335
+    ],
+    [
+     142606336,
+     143654911
+    ],
+    [
+     143654912,
+     144703487
+    ],
+    [
+     144703488,
+     145752063
+    ],
+    [
+     145752064,
+     146800639
+    ],
+    [
+     146800640,
+     147849215
+    ],
+    [
+     147849216,
+     148897791
+    ],
+    [
+     148897792,
+     149946367
+    ],
+    [
+     149946368,
+     150994943
+    ],
+    [
+     150994944,
+     152043519
+    ],
+    [
+     152043520,
+     153092095
+    ],
+    [
+     153092096,
+     154140671
+    ],
+    [
+     154140672,
+     155189247
+    ],
+    [
+     155189248,
+     156237823
+    ],
+    [
+     156237824,
+     157286399
+    ],
+    [
+     157286400,
+     158334975
+    ],
+    [
+     158334976,
+     159383551
+    ],
+    [
+     159383552,
+     160432127
+    ]
+   ],
+   "covers": true,
+   "claims": 63
+  }
+ ],
+ "resumeCases": [
+  {
+   "written": 0,
+   "offset": 100,
+   "end": 199,
+   "expected": 100
+  },
+  {
+   "written": 50,
+   "offset": 100,
+   "end": 199,
+   "expected": 150
+  },
+  {
+   "written": 100,
+   "offset": 100,
+   "end": 199,
+   "expected": 200
+  },
+  {
+   "written": 999,
+   "offset": 100,
+   "end": 199,
+   "expected": 200
+  },
+  {
+   "written": 1,
+   "offset": 0,
+   "end": 0,
+   "expected": 1
+  }
+ ],
+ "rotateCases": [
+  {
+   "start": 0,
+   "written": 10,
+   "wanted": 100,
+   "elapsed": 10000,
+   "budget": 10000,
+   "expected": true
+  },
+  {
+   "start": 0,
+   "written": 100,
+   "wanted": 100,
+   "elapsed": 10000,
+   "budget": 10000,
+   "expected": false
+  },
+  {
+   "start": 0,
+   "written": 10,
+   "wanted": 100,
+   "elapsed": 9999,
+   "budget": 10000,
+   "expected": false
+  },
+  {
+   "start": -1,
+   "written": 10,
+   "wanted": -1,
+   "elapsed": 99999,
+   "budget": 10000,
+   "expected": false
+  },
+  {
+   "start": 5,
+   "written": 0,
+   "wanted": 8,
+   "elapsed": 20000,
+   "budget": 5000,
+   "expected": true
+  }
+ ],
+ "rangeCases": [
+  {
+   "code": 200,
+   "start": 0,
+   "end": 2497215,
+   "contentLength": 2497216,
+   "expected": true
+  },
+  {
+   "code": 200,
+   "start": 0,
+   "end": 2497215,
+   "contentLength": 100,
+   "expected": false
+  },
+  {
+   "code": 200,
+   "start": 4096,
+   "end": 8191,
+   "contentLength": 4096,
+   "expected": false
+  },
+  {
+   "code": 206,
+   "start": 0,
+   "end": 999,
+   "contentLength": 1000,
+   "expected": false
+  },
+  {
+   "code": 200,
+   "start": -1,
+   "end": -1,
+   "contentLength": 100,
+   "expected": false
+  },
+  {
+   "code": 200,
+   "start": 0,
+   "end": 0,
+   "contentLength": 1,
+   "expected": true
+  }
+ ],
+ "laneCases": [
+  {
+   "lanes": 32,
+   "items": 1,
+   "expected": 32
+  },
+  {
+   "lanes": 32,
+   "items": 4,
+   "expected": 8
+  },
+  {
+   "lanes": 32,
+   "items": 100,
+   "expected": 1
+  },
+  {
+   "lanes": 1,
+   "items": 4,
+   "expected": 1
+  },
+  {
+   "lanes": 3,
+   "items": 2,
+   "expected": 1
+  },
+  {
+   "lanes": 1,
+   "items": 1,
+   "expected": 1
+  }
+ ],
+ "attemptCases": [
+  {
+   "name": "有进展就清零",
+   "stallLimit": 4,
+   "attemptLimit": 40,
+   "expected": {
+    "steps": [
+     {
+      "progress": 100,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 400
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 800
+     },
+     {
+      "progress": 0,
+      "retry": false,
+      "delayMs": 1600
+     }
+    ],
+    "attempts": 5,
+    "stalls": 4,
+    "finalDelayMs": 1600
+   }
+  },
+  {
+   "name": "硬上限兜住每次只前进一点",
+   "stallLimit": 1000,
+   "attemptLimit": 40,
+   "expected": {
+    "steps": [
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 1,
+      "retry": false,
+      "delayMs": 200
+     }
+    ],
+    "attempts": 40,
+    "stalls": 0,
+    "finalDelayMs": 200
+   }
+  },
+  {
+   "name": "退避 200 起翻倍封顶 2s",
+   "stallLimit": 1000,
+   "attemptLimit": 1000,
+   "expected": {
+    "steps": [
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 200
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 400
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 800
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 1600
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 2000
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 2000
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 2000
+     },
+     {
+      "progress": 0,
+      "retry": true,
+      "delayMs": 2000
+     }
+    ],
+    "attempts": 8,
+    "stalls": 8,
+    "finalDelayMs": 2000
+   }
+  }
+ ]
+}
