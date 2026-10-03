@@ -39,22 +39,44 @@ jobs:
       # 判据刻意保守:只认像代码标识符的反引号词,外部名记在脚本的 FOREIGN 表里。
       - run: python3 tool/check_comment_refs.py
 
-      # **逐文件跑 + 失败重试一次**。原因见 README「为什么要逐文件跑」:Windows 上的
+      # **逐文件跑**。原因见 README「为什么要逐文件跑」:Windows 上的
       # flutter_tester 有一条引擎级缺陷(ShaderMask + 滚动,0xc0000005),会静默杀掉
       # 整个测试进程、一次带走同一文件剩下的几十条用例。崩的是 Windows 版 tester,
       # CI 跑 Linux 理论上不受影响 —— 但**本机与 CI 用同一套跑法**才不会出现"本地红、
       # CI 绿"这种没法归因的情况;逐文件还顺带把爆炸半径限制在一个文件里。
       # 改测试或跑验证时,本机用等价的 .\tool\run_tests.ps1。
-      - name: flutter test(逐文件,失败重试一次)
+      #
+      # **只在 tester 崩了时重试一次**。断言/异常失败不重试:重试一次会“偶尔挂一次”
+      # 的真 bug 抹成绿色。判据与本机脚本 [Test-RunnerCrashed] 一致。
+      - name: flutter test(逐文件;只在 tester 崩溃时重试一次)
         run: |
           set -uo pipefail
           fail=0
+
+          # 副作用式命令替掉函数返回值:有失败标记 = 真失败;否则 = 崩了。
+          #
+          # 判据看**有没有失败标记**,而不是看有没有 `did not complete` —— 后者只是崩
+          # 的一种形态,实测崩得最干脆那次只剩一行 `loading test/xxx_test.dart`,
+          # 按"没有 did not complete 就是真失败"会判反。真失败一定留标记:断言、未捕获
+          # 异常、编译/加载失败、或者报告器打的 `[E]` 失败行(与 PS 脚本判据一致)。
+          crashed() {
+            grep -q 'did not complete' <<<"$1" && return 0
+            ! grep -qE 'Expected:|Actual:|TestFailure|EXCEPTION CAUGHT|Unhandled exception|Failed to load|\[E\]' <<<"$1"
+          }
+
           for f in $(ls test/*_test.dart | sort); do
-            if flutter test "$f" --concurrency=2; then
+            if out=$(flutter test "$f" --concurrency=2 2>&1); then
               continue
             fi
-            echo "::warning file=$f::第一次失败,重试一次"
-            if ! flutter test "$f" --concurrency=2; then
+            echo "$out"
+            if ! crashed "$out"; then
+              echo "::error file=$f::$f 断言/异常失败(不重试)"
+              fail=1
+              continue
+            fi
+            echo "::warning file=$f::tester 崩溃,重试一次"
+            if ! out=$(flutter test "$f" --concurrency=2 2>&1); then
+              echo "$out"
               echo "::error file=$f::$f 两次都失败"
               fail=1
             fi

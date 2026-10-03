@@ -1,4 +1,4 @@
-# 逐文件跑 flutter test,每个文件失败重试一次,最后给出汇总。
+# 逐文件跑 flutter test,最后给出汇总。
 #
 # 为什么要这么跑:Windows 上的 flutter_tester.exe 有一条引擎级缺陷 ——
 # `ShaderMask`(blendMode: dstIn)+ 滚动列表在软件渲染下会以 0xc0000005(访问违例,
@@ -6,11 +6,31 @@
 # 触发是概率性的(约 0.1%/用例),和具体用例无关,只跟"这个文件跑了多少渲染"有关。
 # 详见 README「测试」一节。
 #
-# 逐文件跑的两个好处:一个文件崩只影响它自己;重试一次就把那点概率抹掉。
+# 逐文件跑的两个好处:一个文件崩只影响它自己;崩溃那次重试一次就把概率抹掉。
+#
+# **只对"tester 崩了"重试**。断言/异常失败一律直接 FAIL —— 无脑重试会把"偶尔
+# 挂一次"的真 bug 抹成绿色,那是拿重试当遮羞布。判据见 [Test-RunnerCrashed]。
 param(
   [int]$Retry = 1,
   [string]$Path = 'test'
 )
+
+# 这次失败是"tester 崩了(可重试)"还是"真的失败(不许重试)"?
+#
+# 判据是**看有没有失败标记**,而不是看有没有 `did not complete`:后者只是崩溃的一种
+# 形态。实测崩得最干脆的那次,输出只剩一行 `loading test/xxx_test.dart`,连 `[E]` 都
+# 没来得及打 —— 那时按"没有 did not complete 就是真失败"会判反,把崩溃当成假失败。
+#
+# 反过来,真失败**一定**留标记:断言(Expected/Actual/TestFailure)、未捕获异常、
+# 编译/加载失败(Failed to load)、或者报告器打的 `[E]` 失败行。两条都不沾的非零退出
+# 只可能是进程没了,按崩溃算、放它重试一次。
+function Test-RunnerCrashed([string]$Text) {
+  if ($Text -match 'did not complete') { return $true }
+  if ($Text -match 'Expected:|Actual:|TestFailure|EXCEPTION CAUGHT|Unhandled exception|Failed to load|\[E\]') {
+    return $false
+  }
+  return $true
+}
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -43,6 +63,11 @@ foreach ($f in $files) {
     }
     if ($code -eq 0) {
       $ok = $true
+      break
+    }
+    if (-not (Test-RunnerCrashed ($log -join [Environment]::NewLine))) {
+      # 真失败:重试只会掩盖它,直接判 FAIL。
+      Write-Output '    (断言/异常失败,不重试)'
       break
     }
   }
