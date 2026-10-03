@@ -217,11 +217,12 @@ flutter test integration_test        # 需要真机或模拟器
 ### 项目结构
 
 ```
-lib/                   43 个 Dart 文件
+lib/                   55 个 Dart 文件
   main.dart            入口与根壳
   bootstrap.dart       启动编排：首帧前要办的事，与之后的后台活
-  pages/               parse / history / preview 三个板块，加设置各级页
-  ui/                  共享界面件（面板、弹层、进度环、播放器、通知、偏好…）
+  pages/               四个板块页：parse / history / preview / settings
+  ui/                  共享界面件（面板、弹层、进度环、通知、偏好…），
+                       以及预览与设置拆出来的各分片（见下面那段）
   parse_service.dart   链接识别、上游路由与请求重试
   upstream_mapping.dart 各家平台应答转统一模型（不碰网络，可脱网单测）
   downloader.dart      下载调度、落盘、后缀嗅探与媒体库登记
@@ -234,6 +235,14 @@ tool/                  生成 / 转换脚本，run_tests.ps1 逐文件跑测试
 test/                  Dart 用例：单元测试与 widget 测试
 integration_test/      真机基准测试（下载测速）
 ```
+
+`pages/` 里只放四个板块页本身。原来挤在它们里面的东西按“一个东西一个文件”搬进了
+`lib/ui/`，找二级页面时不用再去翻两千行：
+
+| 原来住在哪 | 现在住在哪 |
+| --- | --- |
+| `pages/preview.dart`（2125 行） | `ui/player_ui.dart`（播放控件那一层）、`ui/video_stage.dart`、`ui/audio_stage.dart`、`ui/gallery_stage.dart`（缩略图条 + 大图）、`ui/copy_stage.dart`；`playbackHeaders` 并进了 `ui/playback.dart` |
+| `pages/settings.dart`（1737 行） | `ui/theme_appearance_page.dart`、`ui/storage_location_card.dart`、`ui/help_feedback_page.dart`、`ui/about_page.dart`、`ui/sponsor_page.dart`、`ui/notification_management_page.dart`、`ui/auto_paste_page.dart`；`pages/settings.dart` 只剩索引页那三块 |
 
 ### 下载器纯逻辑的跨端规格
 

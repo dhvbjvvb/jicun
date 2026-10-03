@@ -19,11 +19,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jicun/downloader.dart';
 import 'package:jicun/main.dart';
-import 'package:jicun/pages/preview.dart';
-import 'package:jicun/pages/settings.dart';
 import 'package:jicun/preferred_ip.dart';
+import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/prefs.dart';
+import 'package:jicun/ui/theme_appearance_page.dart';
 
 import 'widget_support.dart';
 

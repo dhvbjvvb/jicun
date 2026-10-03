@@ -18,8 +18,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jicun/downloader.dart';
 import 'package:jicun/main.dart';
-import 'package:jicun/pages/preview.dart';
 import 'package:jicun/preferred_ip.dart';
+import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/ui/download_progress_card.dart';
 import 'package:jicun/ui/progress_ring.dart';
 import 'widget_support.dart';

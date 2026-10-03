@@ -164,6 +164,16 @@ class ReleaseNotesPreview extends StatelessWidget {
 
   static const double _verticalPadding = 10;
 
+  /// 预览窗口的总高度:**kNotesLines 行文字** + 内容区上下那两层内边距。
+  ///
+  /// 原来只算了 12 行文字高(`_lineHeight * kNotesLines`),内边距没算进来:内容外面
+  /// 套着一层 `_verticalPadding`,于是「按文字高量出来正好放得下」的说明会顶出去 20px
+  /// —— debug 里是 RenderFlex overflow,release 里就是**末行被悄悄裁掉,而且因为没有
+  /// 滚动条,用户还不知道下面还有字**。窗口比 12 行矮,能看的只有 11 行,和「固定
+  /// 12 行字」这个需求也不符。
+  static const double _windowHeight =
+      _lineHeight * kNotesLines + _verticalPadding * 2;
+
   TextStyle _styleFor(MdLineKind kind, {required bool empty}) {
     switch (kind) {
       case MdLineKind.heading:
@@ -258,7 +268,7 @@ class ReleaseNotesPreview extends StatelessWidget {
     if (lines.isEmpty) {
       // 说明是空的:给一句占位,别给用户看一个空窗口
       return SizedBox(
-        height: _lineHeight * kNotesLines,
+        height: _windowHeight,
         child: Align(
           alignment: Alignment.topLeft,
           child: Text(
@@ -286,16 +296,19 @@ class ReleaseNotesPreview extends StatelessWidget {
     List<MdLine> lines,
     BoxConstraints constraints,
   ) {
-    const maxHeight = _lineHeight * kNotesLines;
+    const textHeight = _lineHeight * kNotesLines;
     // 半像素余量:行高是算出来的,和布局引擎里的实际值差一点点;刚好 12 行时
     // 不该被判成"超了"而多出一条滚动条。
+    //
+    // 比的是**文字**高,所以右边也只能是文字高 —— 窗口本身(_windowHeight)还多出
+    // 上下内边距,拿窗口高来比就会把"差一点装不下"的那些判成放得下(见 [_windowHeight])。
     final scrollable =
         _measure(
           lines,
           constraints.maxWidth - _horizontalPadding * 2 - kScrollbarGutter,
           MediaQuery.textScalerOf(context),
         ) >
-        maxHeight + 0.5;
+        textHeight + 0.5;
 
     final content = Padding(
       padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
@@ -311,7 +324,7 @@ class ReleaseNotesPreview extends StatelessWidget {
     );
 
     return Container(
-      height: maxHeight,
+      height: _windowHeight,
       decoration: BoxDecoration(
         // 比卡片底色再压一层:预览窗口和卡片本体的边界就出来了,不用画线。
         // 这两个黑(深 10% / 浅 5%)不在 Palette 里:surfaceClear 是白色系那一对,

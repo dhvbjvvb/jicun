@@ -40,3 +40,49 @@ class Playback {
   }
 }
 
+/// 播放器要带的请求头。
+///
+/// 平台的 CDN 有的**按 Referer / UA 放行**:
+/// - B 站 DASH 那条纯音频流(解析服务的 `_fetch_audio_stream`)不带 Referer 一律 403、
+///   带了才 206;而且它认桌面 UA(见 NativeDownloader 的 BILIBILI_UA);
+/// - 抖音系的 CDN(音乐在 `*.douyinstatic.com`)**下载器一直发浏览器 UA、能下**,而
+///   播放器默认那份 UA 不一定被放行 —— 预览加载不出来、下载却正常,差异就在这儿。
+///   这里把预览对齐成下载器那份浏览器 UA。
+///
+/// **B 站那条刻意不塞 User-Agent**:just_audio 会把 headers 里的 `User-Agent` 摘出来
+/// 当播放器自己的 UA 用,而 B 站 CDN 是按「IP + UA」一起判的 —— 同一份 UA 在这台手机上
+/// 被拒、在另一条链路上被放行(实测)。猜哪一份都可能猜错。
+///
+/// 认不出的主机返回空表:别人的 CDN 不吃这一套,乱塞一个 Referer 反而可能被拒。
+Map<String, String> playbackHeaders(String url) {
+  final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+  if (host.endsWith('bilivideo.com') || host.endsWith('bilibili.com')) {
+    return const <String, String>{'Referer': 'https://www.bilibili.com/'};
+  }
+  if (_byteDanceHosts.any(host.endsWith)) {
+    return const <String, String>{'User-Agent': kBrowserUserAgent};
+  }
+  return const <String, String>{};
+}
+
+/// 和原生下载器的 `BROWSER_UA` 一字不差:预览和下载对齐同一份 UA。
+const String kBrowserUserAgent =
+    'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+
+/// 抖音系的 CDN 域名后缀 —— 下载器对这几家发的就是上面那份浏览器 UA。
+const List<String> _byteDanceHosts = <String>[
+  'douyinstatic.com',
+  'douyinpic.com',
+  'douyinvod.com',
+  'douyincdn.com',
+  'ixigua.com',
+  'ixiguavideo.com',
+  'amemv.com',
+  'bdxiguavod.com',
+  'byteimg.com',
+  'bytedance.com',
+  'zjcdn.com',
+  'pstatp.com',
+  'snssdk.com',
+];

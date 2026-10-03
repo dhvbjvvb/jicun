@@ -8,7 +8,7 @@ import 'package:jicun/downloader.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('同一时刻只允许一个原生下载任务:第二个当场断言失败', () async {
+  test('同一时刻只允许一个原生下载任务:第二个当场失败(release 上也拦住)', () async {
     const channel = MethodChannel('jicun/downloader');
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -33,9 +33,12 @@ void main() {
 
     // 进度回调是通道级全局的(dnProgress / dnDone 不带任务 id),第二个任务会把两条
     // 下载的进度算到一起 —— 所以这里必须是硬约束,不是注释里的君子协定。
+    //
+    // 期望的是 [StateError] 而不是断言错误:这条约束以前写成 `assert`,release 上
+    // 直接消失(而进度串了不会崩,只会让用户看到一个往回跳的百分比)。
     expect(
       () => Downloader.nativeDownload(items, temp: temp, onProgress: (_) {}),
-      throwsAssertionError,
+      throwsStateError,
     );
 
     // 收尾:让第一个正常结束(取消),别把 method call handler 留在通道上。

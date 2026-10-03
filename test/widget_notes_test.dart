@@ -17,8 +17,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jicun/downloader.dart';
 import 'package:jicun/history_store.dart';
 import 'package:jicun/main.dart';
-import 'package:jicun/pages/preview.dart';
 import 'package:jicun/preferred_ip.dart';
+import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/update_card.dart';
 import 'package:jicun/update_service.dart';
@@ -90,8 +90,10 @@ void main() {
 
       // 每行一个 Text(30 行说明 → 30 个)
       expect(find.text('第 0 行说明'), findsOneWidget);
-      // 12 行 × 13px × 1.55
-      const expected = 12 * 13 * 1.55;
+      // 12 行 × 13px × 1.55,再加内容区上下两层内边距(10+10)。
+      // 内边距原来没算在窗口高里,结果「按文字高量出来正好 12 行」的说明会顶出去 20px,
+      // 末行在 release 里被静静裁掉(见 update_card.dart 的 _windowHeight)。
+      const expected = 12 * 13 * 1.55 + 20;
       final box = tester.getSize(find.byType(Scrollbar));
       expect(box.height, closeTo(expected, 0.5));
       expect(find.byType(Scrollbar), findsOneWidget);
@@ -157,6 +159,84 @@ void main() {
 
       await pumpAt(600);
       expect(find.byType(Scrollbar), findsNothing, reason: '600 宽装得下,不该多一条空槽');
+    });
+
+    /// 固定宽度下把说明挂起来:行数由 [lines] 决定(每行都很短,不会折行),
+    /// [textScale] 改系统字号缩放。
+    ///
+    /// 缩放用 `MediaQuery.of(context).copyWith` 从现有数据上改,不是新造一个
+    /// [MediaQueryData] —— 后者会把尺寸一并重置成默认值,量出来的东西就不是 "这块
+    /// 面板给多宽" 了。
+    Future<void> pumpNotes(
+      WidgetTester tester,
+      List<String> lines, {
+      double width = 600,
+      double textScale = 1,
+    }) => tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: Center(
+              child: SizedBox(
+                width: width,
+                child: ReleaseNotesPreview(
+                  notes: lines.join('\n'),
+                  foreground: CupertinoColors.black,
+                  secondary: CupertinoColors.systemGrey,
+                  isDark: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('判据是「超过 12 行」:正好 12 行不挂滚动条,也不许裁掉末行', (tester) async {
+      // 既有用例比的是 30 行和 1 行,中间那一格没钉住:判据写成 `>= 12`、或者把 12
+      // 写成 11,它们都照样绿。而这一格恰好踩在一个真坑上 —— 窗口高 12 行**文字**,
+      // 内容外面还套着上下内边距;拿窗口高去比文字高,刚好 12 行的说明就会被判成
+      // “放得下”:滚动条不挂,末行在 release 里被静静裁掉。
+      final twelve = [for (var i = 0; i < 12; i++) '第 $i 行'];
+      await pumpNotes(tester, twelve);
+      expect(find.text('第 11 行'), findsOneWidget);
+      expect(
+        find.byType(Scrollbar),
+        findsNothing,
+        reason: '正好 12 行装得下,不该挂滚动条',
+      );
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: '12 行必须真的装得下:溢出意味着末行被裁掉了',
+      );
+
+      await pumpNotes(tester, [...twelve, '第 12 行']);
+      expect(find.byType(Scrollbar), findsOneWidget, reason: '13 行超了,必须能滚');
+      expect(
+        tester.getSize(find.byType(Scrollbar)).height,
+        closeTo(12 * 13 * 1.55 + 20, 0.5),
+        reason: '窗口是 12 行文字高 + 上下内边距,不是 13 行',
+      );
+    });
+
+    testWidgets('量行数用的是真实系统字号:字号放大后同样的说明要能滚', (tester) async {
+      // 8 行短句:1.0 倍时总共 8 行高,放大到 2.0 倍就是 16 行高 —— 超过 12 行。
+      // 这条钉的是 _measure 有没有把 MediaQuery.textScalerOf 传下去:漏传的话两边
+      // 结果一样,它就是红的。
+      final eight = [for (var i = 0; i < 8; i++) '第 $i 行'];
+      await pumpNotes(tester, eight);
+      expect(find.byType(Scrollbar), findsNothing, reason: '8 行装得下');
+
+      await pumpNotes(tester, eight, textScale: 2);
+      expect(
+        find.byType(Scrollbar),
+        findsOneWidget,
+        reason: '字号放大一倍后相当于 16 行,必须能滚',
+      );
     });
   });
 

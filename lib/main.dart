@@ -30,6 +30,7 @@ import 'pages/parse.dart';
 import 'pages/history.dart';
 import 'pages/settings.dart';
 import 'ui/glass.dart';
+import 'ui/theme_appearance_page.dart';
 
 
 // 启动画面**只在原生侧**(浅深各一个启动入口,见 AndroidManifest 里的

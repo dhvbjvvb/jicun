@@ -11,7 +11,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Material;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jicun/pages/preview.dart';
+import 'package:jicun/ui/video_stage.dart';
 
 import 'widget_support.dart';
 

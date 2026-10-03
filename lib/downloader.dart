@@ -149,8 +149,12 @@ class Downloader {
   ///
   /// [nativeDownload] 的进度回调是**通道级全局**的(dnProgress / dnDone 都不带任务
   /// id —— 理由见 handler 里那段说明),所以同一时刻只能有一个任务在飞。生产代码
-  /// 目前也只有一个入口,但那是"调用点的自觉",不是约束:这里用断言把它变成约束,
-  /// 调试构建下第二个任务当场失败,而不是安静地把两条下载的进度算到一起。
+  /// 目前也只有一个入口,但那是"调用点的自觉",不是约束:这里把它变成约束,第二个
+  /// 任务当场失败,而不是安静地把两条下载的进度算到一起。
+  ///
+  /// **不是 `assert`**:带上它的那版只在调试构建里成立,release 上这个约束等于没
+  /// 有 —— 而进度串了不会崩,只会让用户看到一个往回跳的百分比,那是最难查的一类
+  /// 问题。代价只有一次 bool 判断。
   static bool _inFlight = false;
 
   /// 每个分类自定义的目录。空 = 走默认的媒体库路径(见 [MediaKind.folder])。
@@ -355,11 +359,12 @@ class Downloader {
       return null;
     }
 
-    assert(
-      !_inFlight,
-      '同一时刻只能有一个原生下载任务:dnProgress / dnDone 不按任务 id 过滤,'
-      '两个任务同时在跑,进度会互相串(见 handler 里的说明)。',
-    );
+    if (_inFlight) {
+      throw StateError(
+        '同一时刻只能有一个原生下载任务:dnProgress / dnDone 不按任务 id 过滤,'
+        '两个任务同时在跑,进度会互相串(见 handler 里的说明)。',
+      );
+    }
     _inFlight = true;
     _channel.setMethodCallHandler(handler);
     try {

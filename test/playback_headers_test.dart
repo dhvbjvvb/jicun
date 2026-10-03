@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jicun/pages/preview.dart';
+import 'package:jicun/ui/playback.dart';
 
 /// 预览播放器带的请求头要和下载器对齐:抖音系 CDN 发浏览器 UA,B 站发 Referer 且不塞 UA。
 void main() {
