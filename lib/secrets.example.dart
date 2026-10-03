@@ -31,4 +31,9 @@ const String upstreamBaseUrl = 'https://api.invalid.example';
 ///
 /// 占位值下 App 照样能编译、能启动,只是连不上接口:解析、检查更新、赞助名单都会
 /// 退化或失败(服务端下发的域名表也得先连上才拉得到)。
-const String ownApiHost = 'api.invalid.example';
+///
+/// **占位域名别和上面上游那个占位值撞**:用例靠主机名区分「上游直连」和「走我们自己
+/// 的 media-parser 兜底」(见 test/upstream_routing_test.dart 里那句
+/// `url.host == Uri.parse(ParseService.upstreamBase).host`)。两个占位值一样的话,两条路
+/// 会被认成同一条,CI 上会挂一批路由用例 —— 本地 secrets 里填的是真值,反而看不出来。
+const String ownApiHost = 'own.invalid.example';
