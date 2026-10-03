@@ -99,4 +99,3 @@ class CardHeadline extends StatelessWidget {
     );
   }
 }
-

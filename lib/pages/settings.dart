@@ -1,4 +1,3 @@
-
 import 'package:flutter/cupertino.dart';
 // material 是**选择性**转出 foundation 的,defaultTargetPlatform 不在里面,得自己引。
 import 'package:jicun/shell_controller.dart';
@@ -47,11 +46,7 @@ class SettingsPage extends StatelessWidget {
       const SettingsOption('检查更新', '点击检查最新版本', showChevron: false),
     const SettingsOption('使用帮助及反馈', '看APP支持范围及类别，反馈问题渠道', icon: '帮助及联系反馈'),
     const SettingsOption('关于本APP', '开源地址，彩蛋（自行摸索），免责声明'),
-    const SettingsOption(
-      '赞助名单',
-      '为本项目提供支持的吴彦祖和刘亦菲',
-      icon: '赞助名单',
-    ),
+    const SettingsOption('赞助名单', '为本项目提供支持的吴彦祖和刘亦菲', icon: '赞助名单'),
   ];
 
   @override
@@ -82,8 +77,7 @@ class SettingsPage extends StatelessWidget {
                   )
                 : SettingsOptionCard(
                     option: entry.value,
-                    onPressed: () =>
-                        _handleOption(context, entry.value.title),
+                    onPressed: () => _handleOption(context, entry.value.title),
                   ),
           ),
         ),
@@ -100,9 +94,9 @@ class SettingsPage extends StatelessWidget {
     }
 
     if (title == '主题与外观') {
-      Navigator.of(context).push(
-        SubPageRoute<void>(builder: (_) => ThemeAppearancePage(app: app)),
-      );
+      Navigator.of(
+        context,
+      ).push(SubPageRoute<void>(builder: (_) => ThemeAppearancePage(app: app)));
       return;
     }
 
@@ -116,9 +110,8 @@ class SettingsPage extends StatelessWidget {
     }
 
     if (title == '自动粘贴并解析') {
-      Navigator.of(context).push(
-        SubPageRoute<void>(builder: (_) => AutoPastePage(app: app)),
-      );
+      Navigator.of(context)
+          .push(SubPageRoute<void>(builder: (_) => AutoPastePage(app: app)));
       return;
     }
 

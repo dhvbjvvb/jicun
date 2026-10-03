@@ -165,7 +165,10 @@ String normalizeQualityLabel(String raw) {
 int _qualityRank(String label) {
   // K 档先认:`4K` / `8K` / `2K`。_heightOf 的正则只抓数字,会把 `4K` 读成 4 ——
   // 排在 720P 下面,去重和排序时上游写 K 的档位就成了最低档。
-  final k = RegExp(r'(\d+(?:\.\d+)?)\s*K', caseSensitive: false).firstMatch(label);
+  final k = RegExp(
+    r'(\d+(?:\.\d+)?)\s*K',
+    caseSensitive: false,
+  ).firstMatch(label);
   if (k != null) {
     final value = double.tryParse(k.group(1)!) ?? 0;
     if (value > 0) return (value * 1000).round();

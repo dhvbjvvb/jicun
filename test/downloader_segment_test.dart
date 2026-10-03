@@ -10,7 +10,11 @@ import 'package:jicun/downloader.dart';
 /// 故意**不发** `Accept-Ranges`:抖音视频 CDN 就是这样,回 206 但不带这个头。
 /// 判定要是只认这个头,360MB 的视频就会被当成"不分段"。
 class _FakeCdn {
-  _FakeCdn(this.bytes, {this.wholeFileAsOk = false, this.stallFirstRange = false});
+  _FakeCdn(
+    this.bytes, {
+    this.wholeFileAsOk = false,
+    this.stallFirstRange = false,
+  });
 
   final List<int> bytes;
 

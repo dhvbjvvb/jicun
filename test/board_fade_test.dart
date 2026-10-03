@@ -22,15 +22,15 @@ void main() {
       CupertinoApp(
         home: BoardScrollView(
           header: const BoardHeader(title: '解析'),
-          children: [
-            for (var i = 0; i < 14; i++) const SizedBox(height: 100),
-          ],
+          children: [for (var i = 0; i < 14; i++) const SizedBox(height: 100)],
         ),
       ),
     );
     await tester.pump();
 
-    final ShaderMask before = tester.widget<ShaderMask>(find.byType(ShaderMask));
+    final ShaderMask before = tester.widget<ShaderMask>(
+      find.byType(ShaderMask),
+    );
     await tester.drag(find.byType(Scrollable), const Offset(0, -120));
     await tester.pumpAndSettle();
     final ShaderMask after = tester.widget<ShaderMask>(find.byType(ShaderMask));

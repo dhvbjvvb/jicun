@@ -25,11 +25,20 @@ jobs:
           channel: stable
 
       # lib/secrets.dart is gitignored, and the app does not compile without it.
-      # The template is enough here: the tests stub the network, and no real key is needed.
+      # The template is enough here: the tests stub the network, and no real
+      # key is needed.
       - run: cp lib/secrets.example.dart lib/secrets.dart
 
       - run: flutter pub get
       - run: flutter analyze
+
+      # 格式门。dart format 只动空白,所以它的价值不在"代码好不好看",而在不让 diff 漂:
+      # 谁提交前忘了跑,下一个人的改动里就会混进一堆无关折行,review 时分不清哪行是
+      # 真改动。命令与本机一致,本地跑法:dart format lib test
+      # 整个仓库一次性对齐后才有这道门 —— 之前逐文件改 bug 时,顺手带进来的折行会
+      # 混在同一个 diff 里。
+      - name: dart format(格式门)
+        run: dart format --output=none --set-exit-if-changed lib test
 
       # 下载器的纯逻辑测试向量是生成物(tool/download_logic_vectors.json)。
       # 这里不 --write,只校验它和实现一致 —— 改了那几个函数忘了重新生成,CI 直接红。
@@ -58,10 +67,18 @@ jobs:
           # 判据看**有没有失败标记**,而不是看有没有 `did not complete` —— 后者只是崩
           # 的一种形态,实测崩得最干脆那次只剩一行 `loading test/xxx_test.dart`,
           # 按"没有 did not complete 就是真失败"会判反。真失败一定留标记:断言、未捕获
-          # 异常、编译/加载失败、或者报告器打的 `[E]` 失败行(与 PS 脚本判据一致)。
+          # 异常、编译失败、或者报告器打的 `[E]` 失败行(与 PS 脚本判据一致)。
+          #
+          # 但"进程没了"有一句话专属于它,必须排在标记表前面查:加载期被杀时 flutter 报
+          # `Failed to load "...": Connection closed before test suite loaded.`,
+          # 它同时带 `Failed to load` 和 `[E]`,先查标记就会把这条 flake 当成真失败不重试。
           crashed() {
             grep -q 'did not complete' <<<"$1" && return 0
-            ! grep -qE 'Expected:|Actual:|TestFailure|EXCEPTION CAUGHT|Unhandled exception|Failed to load|\[E\]' <<<"$1"
+            gone='Connection closed before test suite loaded'
+            grep -q "$gone" <<<"$1" && return 0
+            markers='Expected:|Actual:|TestFailure|EXCEPTION CAUGHT'
+            markers+='|Unhandled exception|Failed to load|\[E\]'
+            ! grep -qE "$markers" <<<"$1"
           }
 
           for f in $(ls test/*_test.dart | sort); do
@@ -89,6 +106,7 @@ jobs:
       # 顺带把 Kotlin 编译这道门也过了。
       - run: flutter build apk --debug
 
-      # Native side: pure-function tests over DownloadNames / LaunchActivities / NativeDownloader.
+      # Native side: pure-function tests over DownloadNames / LaunchActivities
+      # / NativeDownloader.
       - run: ./gradlew :app:testDebugUnitTest
         working-directory: android

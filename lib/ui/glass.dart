@@ -148,7 +148,6 @@ class SubPage extends StatelessWidget {
   }
 }
 
-
 /// 二级页统一走的路由。
 ///
 /// 比 CupertinoPageRoute 少两样东西:
@@ -166,7 +165,6 @@ class SubPageRoute<T> extends CupertinoPageRoute<T> {
   @override
   Duration get transitionDuration => const Duration(milliseconds: 320);
 }
-
 
 /// 把「键盘内缩」(viewInsets.bottom)从子树上摘掉。
 ///
@@ -276,7 +274,11 @@ class UiZoom extends StatelessWidget {
 /// 一份 Material 3 的 ColorScheme(用品牌蓝做种子,所以强调色仍是即存的蓝,
 /// 而不是 Google 默认的紫)。下面所有开关与单选都从它取色。
 class GoogleSurface extends StatelessWidget {
-  const GoogleSurface({super.key, required this.brightness, required this.child});
+  const GoogleSurface({
+    super.key,
+    required this.brightness,
+    required this.child,
+  });
 
   final Brightness brightness;
   final Widget child;
@@ -364,7 +366,6 @@ class GoogleCardTitle extends StatelessWidget {
     );
   }
 }
-
 
 /// 卡片里的点击区:不要涟漪、不要按下高亮。
 ///
@@ -770,4 +771,3 @@ class PillAction extends StatelessWidget {
     );
   }
 }
-

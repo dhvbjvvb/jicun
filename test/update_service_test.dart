@@ -523,9 +523,7 @@ void main() {
     test('release 写明 sha256:哈希对上才落盘', () async {
       final bytes = List<int>.generate(2048, (i) => i % 251);
       final digest = sha256.convert(bytes).toString();
-      final release = _parse(
-        _release(body: '修了几个 bug\n\nsha256: $digest'),
-      );
+      final release = _parse(_release(body: '修了几个 bug\n\nsha256: $digest'));
       useStubUpdateClient(streaming(bytes: bytes));
       final service = UpdateService();
       addTearDown(service.dispose);
@@ -562,9 +560,7 @@ void main() {
 
     test('哈希对不上:每个地址都拒收,最后报「校验失败」且不留残件', () async {
       final bytes = List<int>.generate(512, (i) => i % 97);
-      final release = _parse(
-        _release(body: 'sha256: ${'a' * 64}'),
-      );
+      final release = _parse(_release(body: 'sha256: ${'a' * 64}'));
       var hits = 0;
       useStubUpdateClient(
         MockClient.streaming((request, bodyStream) async {

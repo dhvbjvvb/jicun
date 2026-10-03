@@ -38,6 +38,7 @@ void main() {
       ),
     );
   }
+
   testWidgets('换链接重新解析时,上一条的加载失败不会把新视频标成「视频无法播放」', (tester) async {
     final fake = useFakeVideoPlayer();
     // 上一条卡在"建播放器"这一步:它还没初始化完,用户就已经粘了下一条链接
@@ -50,11 +51,7 @@ void main() {
     // 换链接:同类型同位置的 State 被复用,didUpdateWidget 先 dispose 旧的、再加载新的
     await tester.pumpWidget(stage(tester, 'https://cdn.example/b.mp4'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('视频无法播放'),
-      findsNothing,
-      reason: '新视频加载正常,卡上不该出现失败占位',
-    );
+    expect(find.text('视频无法播放'), findsNothing, reason: '新视频加载正常,卡上不该出现失败占位');
 
     // 闸门打开:上一条那次加载**现在**才失败 —— 它属于已经被换掉的那个播放器
     gate.completeError(PlatformException(code: 'stale_load'));
@@ -63,11 +60,7 @@ void main() {
     // 判据是 identical(_controller, controller):不是当前这个播放器失败,就不该改状态。
     // 少这一判(见 VideoStage._load 的 catch),这里会亮出"视频无法播放",而且链接不再
     // 变的话永远不会自愈。
-    expect(
-      find.text('视频无法播放'),
-      findsNothing,
-      reason: '旧播放器的失败不该算到新视频头上',
-    );
+    expect(find.text('视频无法播放'), findsNothing, reason: '旧播放器的失败不该算到新视频头上');
   });
 
   testWidgets('当前这条真的加载失败时,照样要报「视频无法播放」', (tester) async {

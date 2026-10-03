@@ -76,7 +76,10 @@ List<int> _buildM4a(List<int> payload) {
     ]);
     final udta = _box('udta', <int>[
       ..._box('meta', <int>[
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
         ..._box('hdlr', List<int>.filled(25, 0)),
         ..._box('ilst', <int>[..._text('\u00A9too', 'Lavf60')]),
       ]),
@@ -90,7 +93,10 @@ List<int> _buildM4a(List<int> payload) {
 
   final ftyp = _box('ftyp', <int>[
     ...utf8.encode('M4A '),
-    0, 0, 2, 0,
+    0,
+    0,
+    2,
+    0,
     ...utf8.encode('M4A '),
     ...utf8.encode('isom'),
     ...utf8.encode('iso2'),
@@ -99,11 +105,7 @@ List<int> _buildM4a(List<int> payload) {
   // 正确的绝对偏移,夹具本身不合法的话用例验不出东西。
   final moovSize = build(0).length;
   final payloadOffset = ftyp.length + moovSize + 8;
-  return <int>[
-    ...ftyp,
-    ...build(payloadOffset),
-    ..._box('mdat', payload),
-  ];
+  return <int>[...ftyp, ...build(payloadOffset), ..._box('mdat', payload)];
 }
 
 /// 读 moov 里那条 stco 的第一个偏移。
@@ -144,7 +146,12 @@ final List<int> _jpeg = <int>[0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4];
 List<int> _buildMp3(List<int> audio) {
   final title = _id3Frame('TIT2', <int>[0x03, ...utf8.encode('旧标题')]);
   final tag = <int>[
-    0x49, 0x44, 0x33, 0x04, 0x00, 0x00,
+    0x49,
+    0x44,
+    0x33,
+    0x04,
+    0x00,
+    0x00,
     ..._syncSafe(title.length),
     ...title,
   ];
@@ -167,19 +174,20 @@ List<int> _syncSafe(int v) => <int>[
 List<int> _id3Frame(String id, List<int> body) => <int>[
   ...utf8.encode(id),
   ..._syncSafe(body.length),
-  0, 0,
+  0,
+  0,
   ...body,
 ];
 
 /// MP3 里所有 v2.4 帧:`ID → 帧体`。从第一个 `ID3` 头往后走。
 Map<String, List<int>> _id3Frames(List<int> b) {
-  final size =
-      (b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9];
+  final size = (b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9];
   final out = <String, List<int>>{};
   var pos = 10;
   while (pos + 10 <= 10 + size) {
     final id = String.fromCharCodes(b.sublist(pos, pos + 4));
-    final len = (b[pos + 4] << 21) |
+    final len =
+        (b[pos + 4] << 21) |
         (b[pos + 5] << 14) |
         (b[pos + 6] << 7) |
         b[pos + 7];
@@ -212,7 +220,10 @@ void main() {
 
       // 音频本体一个字节都不能动。
       expect(
-        out.sublist(_mdatPayloadOffset(out), _mdatPayloadOffset(out) + payload.length),
+        out.sublist(
+          _mdatPayloadOffset(out),
+          _mdatPayloadOffset(out) + payload.length,
+        ),
         payload,
       );
     });
@@ -241,11 +252,7 @@ void main() {
         const AudioTagInfo(title: '第一遍'),
         null,
       )!;
-      final twice = writeMp4Tag(
-        once,
-        const AudioTagInfo(title: '第二遍'),
-        null,
-      )!;
+      final twice = writeMp4Tag(once, const AudioTagInfo(title: '第二遍'), null)!;
 
       expect(utf8.decode(_ilstItems(twice)['\u00A9nam']!.sublist(8)), '第二遍');
       final moov = _find(twice, 0, twice.length, 'moov')!;
@@ -260,7 +267,14 @@ void main() {
     });
 
     test('没有 moov 的东西原样返回,不猜', () {
-      expect(writeMp4Tag(List<int>.filled(64, 0), const AudioTagInfo(title: 'x'), null), isNull);
+      expect(
+        writeMp4Tag(
+          List<int>.filled(64, 0),
+          const AudioTagInfo(title: 'x'),
+          null,
+        ),
+        isNull,
+      );
     });
   });
 
@@ -285,10 +299,7 @@ void main() {
       expect(frames['APIC'], isNotNull);
 
       // 旧标题不能还留在文件里(整块旧标签被换掉了)。
-      expect(
-        utf8.decode(out, allowMalformed: true).contains('旧标题'),
-        isFalse,
-      );
+      expect(utf8.decode(out, allowMalformed: true).contains('旧标题'), isFalse);
       // 音频本体原样,末尾的 ID3v1 没了 —— 音频就是文件最后那一段。
       expect(out.sublist(out.length - audio.length), audio);
     });
@@ -303,7 +314,8 @@ void main() {
     test('认不出的容器不碰文件', () async {
       final dir = Directory.systemTemp.createTempSync('jicun_tag');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final file = File('${dir.path}/a.flac')..writeAsBytesSync(List<int>.filled(32, 9));
+      final file = File('${dir.path}/a.flac')
+        ..writeAsBytesSync(List<int>.filled(32, 9));
 
       final wrote = await embedAudioTags(
         file,
@@ -319,7 +331,8 @@ void main() {
     test('标签全空时什么都不做', () async {
       final dir = Directory.systemTemp.createTempSync('jicun_tag');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final file = File('${dir.path}/a.mp3')..writeAsBytesSync(List<int>.filled(32, 9));
+      final file = File('${dir.path}/a.mp3')
+        ..writeAsBytesSync(List<int>.filled(32, 9));
 
       expect(
         await embedAudioTags(file, const AudioTagInfo(), ext: '.mp3'),
@@ -340,7 +353,10 @@ void main() {
       );
 
       expect(wrote, isTrue);
-      expect(utf8.decode(_id3Frames(file.readAsBytesSync())['TIT2']!.sublist(1)), '端到端');
+      expect(
+        utf8.decode(_id3Frames(file.readAsBytesSync())['TIT2']!.sublist(1)),
+        '端到端',
+      );
       expect(File('${file.path}.tagging').existsSync(), isFalse);
     });
   });
@@ -348,7 +364,8 @@ void main() {
   group('lyricsPlainText', () {
     test('服务端给的 LRC:去掉时间轴,只留正文', () {
       // 形状照抄汽水那条真链接(见 parse_service.dart 的 lyrics 字段)。
-      const lrc = '[00:00.00]作曲：Nguyễn Văn Mạnh\n'
+      const lrc =
+          '[00:00.00]作曲：Nguyễn Văn Mạnh\n'
           '[00:02.63]街上灯火亮起寒意悄然降临\n'
           '[02:04.71]你的目光让一切都亮了起来';
 

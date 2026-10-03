@@ -29,7 +29,11 @@ void main() {
         kind: MediaKind.video,
       ),
     ];
-    final first = Downloader.nativeDownload(items, temp: temp, onProgress: (_) {});
+    final first = Downloader.nativeDownload(
+      items,
+      temp: temp,
+      onProgress: (_) {},
+    );
 
     // 进度回调是通道级全局的(dnProgress / dnDone 不带任务 id),第二个任务会把两条
     // 下载的进度算到一起 —— 所以这里必须是硬约束,不是注释里的君子协定。
@@ -325,12 +329,13 @@ void main() {
     expect(fractions, <double>[0.5, 0.75, 1.0, 1.0]);
   });
 
-
   test('多条时 100% 只在最后一条进相册之后(前一条进完还不能报满)', () async {
     const channel = MethodChannel('jicun/downloader');
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    final temp = await Directory.systemTemp.createTemp('jicun_native_progress2');
+    final temp = await Directory.systemTemp.createTemp(
+      'jicun_native_progress2',
+    );
     addTearDown(() => temp.deleteSync(recursive: true));
     final fractions = <double>[];
     var publishes = 0;
@@ -892,16 +897,13 @@ void main() {
   test('启动清理:只删遗留分片,已下好的安装包留着', () async {
     final temp = await Directory.systemTemp.createTemp('jicun_native_sweep');
     addTearDown(() => temp.deleteSync(recursive: true));
-    File('${temp.path}/jicun_123_0.part').writeAsBytesSync(
-      List<int>.filled(16, 1),
-    );
-    File('${temp.path}/jicun_123_1.part').writeAsBytesSync(
-      List<int>.filled(16, 1),
-    );
+    File('${temp.path}/jicun_123_0.part')
+        .writeAsBytesSync(List<int>.filled(16, 1));
+    File('${temp.path}/jicun_123_1.part')
+        .writeAsBytesSync(List<int>.filled(16, 1));
     // 更新包下到一半的残件也算分片
-    File('${temp.path}/jicun-1.0.2.apk.part').writeAsBytesSync(
-      List<int>.filled(16, 1),
-    );
+    File('${temp.path}/jicun-1.0.2.apk.part')
+        .writeAsBytesSync(List<int>.filled(16, 1));
     // 完整下好的更新包是 ApkCache 要复用的,不能清
     final apk = File('${temp.path}/jicun-1.0.2.apk')
       ..writeAsBytesSync(List<int>.filled(16, 1));

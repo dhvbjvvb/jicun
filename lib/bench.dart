@@ -292,4 +292,3 @@ class FrameJankLog {
         ' | 光栅 ${timing.rasterDuration.inMilliseconds}ms';
   }
 }
-

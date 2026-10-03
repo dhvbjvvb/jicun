@@ -161,7 +161,11 @@ class ThemeAppearancePage extends StatelessWidget {
 /// 只有 Android 有选图这条路(见 MainActivity.pickBackgroundImage),别的平台这张卡
 /// 干脆不出现(见 ThemeAppearancePage)。
 class CustomBackgroundCard extends StatefulWidget {
-  const CustomBackgroundCard({super.key, required this.app, required this.isDark});
+  const CustomBackgroundCard({
+    super.key,
+    required this.app,
+    required this.isDark,
+  });
 
   final ShellController app;
   final bool isDark;
@@ -490,9 +494,8 @@ class UiScaleCardState extends State<UiScaleCard> {
                       // 不设 divisions:刻度会让把手一格一格跳,手感发涩、不跟手
                       label: '${(_draft * 100).round()}%',
                       onChanged: (v) => setState(() => _draft = v),
-                      onChangeEnd: (v) => widget.app.applySetting(
-                        () => widget.app.uiScale = v,
-                      ),
+                      onChangeEnd: (v) =>
+                          widget.app.applySetting(() => widget.app.uiScale = v),
                     ),
                   ),
                   Text(

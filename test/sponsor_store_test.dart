@@ -28,19 +28,24 @@ void main() {
   String payload(List<Map<String, String>> rows) =>
       jsonEncode({'updated': '2026-10-02T14:52:44+08:00', 'sponsors': rows});
 
-  http.Client ok(String body) =>
-      MockClient((_) async => http.Response(body, 200, headers: {
-            'content-type': 'application/json; charset=utf-8',
-          }));
+  http.Client ok(String body) => MockClient(
+    (_) async => http.Response(
+      body,
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    ),
+  );
 
   http.Client dead() => MockClient((_) async => http.Response('', 500));
 
   group('parseSponsors', () {
     test('正常响应按顺序解析成 昵称/日期/金额', () {
-      final list = parseSponsors(payload([
-        {'name': '*', 'date': '10月1日', 'amount': '¥10.00'},
-        {'name': '*°', 'date': '10月1日', 'amount': '¥0.50'},
-      ]));
+      final list = parseSponsors(
+        payload([
+          {'name': '*', 'date': '10月1日', 'amount': '¥10.00'},
+          {'name': '*°', 'date': '10月1日', 'amount': '¥0.50'},
+        ]),
+      );
       expect(list, <Sponsor>[
         ('*', '10月1日', '¥10.00'),
         ('*°', '10月1日', '¥0.50'),
@@ -57,27 +62,33 @@ void main() {
     });
 
     test('没昵称的条目跳过,非字符串字段当空串', () {
-      final list = parseSponsors(payload([
-        {'name': '', 'date': '9月30日', 'amount': '¥5.00'},
-        {'date': '9月29日', 'amount': '¥1.00'},
-        {'name': '  ', 'date': '9月28日', 'amount': '¥2.00'},
-        {'name': 'keep', 'date': '9月27日', 'amount': '¥3.00'},
-      ]));
+      final list = parseSponsors(
+        payload([
+          {'name': '', 'date': '9月30日', 'amount': '¥5.00'},
+          {'date': '9月29日', 'amount': '¥1.00'},
+          {'name': '  ', 'date': '9月28日', 'amount': '¥2.00'},
+          {'name': 'keep', 'date': '9月27日', 'amount': '¥3.00'},
+        ]),
+      );
       expect(list, <Sponsor>[('keep', '9月27日', '¥3.00')]);
     });
 
     test('昵称里的控制字符剥掉(一个换行就能撑坏表格的一行)', () {
-      final list = parseSponsors(payload([
-        {'name': 'a\nb\tc', 'date': 'x', 'amount': 'y'},
-      ]));
+      final list = parseSponsors(
+        payload([
+          {'name': 'a\nb\tc', 'date': 'x', 'amount': 'y'},
+        ]),
+      );
       expect(list.single.$1, 'abc');
     });
 
     test('超长字段截断到上限', () {
       final long = List<String>.filled(100, 'x').join();
-      final list = parseSponsors(payload([
-        {'name': long, 'date': long, 'amount': long},
-      ]));
+      final list = parseSponsors(
+        payload([
+          {'name': long, 'date': long, 'amount': long},
+        ]),
+      );
       expect(list.single.$1.length, kMaxSponsorName);
       expect(list.single.$2.length, kMaxSponsorDate);
       expect(list.single.$3.length, kMaxSponsorAmount);
@@ -100,9 +111,11 @@ void main() {
 
     test('刷新成功换掉列表并通知一次', () async {
       final store = SponsorStore(
-        client: ok(payload([
-          {'name': 'A', 'date': '1月1日', 'amount': '¥1.00'},
-        ])),
+        client: ok(
+          payload([
+            {'name': 'A', 'date': '1月1日', 'amount': '¥1.00'},
+          ]),
+        ),
       );
       int notified = 0;
       store.addListener(() => notified++);
@@ -121,9 +134,11 @@ void main() {
     test('拉回来是空表也保留旧的那份(别把表格清空)', () async {
       final store = SponsorStore(client: ok('{"sponsors":[]}'));
       // 先塞一份进去,再让服务端返回空表。
-      store.loadCached(payload([
-        {'name': 'A', 'date': '1月1日', 'amount': '¥1.00'},
-      ]));
+      store.loadCached(
+        payload([
+          {'name': 'A', 'date': '1月1日', 'amount': '¥1.00'},
+        ]),
+      );
       await store.refresh();
       expect(store.list.single.$1, 'A');
     });
@@ -131,9 +146,11 @@ void main() {
     test('落盘之后冷启动读得回来', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final store = SponsorStore(
-        client: ok(payload([
-          {'name': 'A', 'date': '1月1日', 'amount': '¥1.00'},
-        ])),
+        client: ok(
+          payload([
+            {'name': 'A', 'date': '1月1日', 'amount': '¥1.00'},
+          ]),
+        ),
       );
       await store.refresh();
 

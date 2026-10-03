@@ -110,7 +110,6 @@ const NotificationDetails kNotificationDetails = NotificationDetails(
   ),
 );
 
-
 /// 系统通知现在允不允许。问不出来返回 null。
 Future<bool?> notificationsEnabled() async {
   try {
@@ -141,4 +140,3 @@ Future<bool> requestNotificationPermission() async {
     return true;
   }
 }
-

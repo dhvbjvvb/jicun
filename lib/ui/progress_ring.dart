@@ -266,9 +266,7 @@ class ScallopBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = failed
-        ? const Color(0xFFE5484D)
-        : const Color(0xFF2F6BFF);
+    final base = failed ? const Color(0xFFE5484D) : const Color(0xFF2F6BFF);
     // 和进度弧同一配方(见 RingPainter 的 shader):徽章压在环底下,
     // 配方不一致的话叠放处会断色。
     final deep = failed ? failedDeep : doneDeep;
@@ -308,10 +306,7 @@ class ScallopFill extends CustomPainter {
     for (var deg = 0; deg <= 360; deg++) {
       final angle = deg * step;
       final rr =
-          r *
-          (1 +
-              ScallopBadge.ripple *
-                  math.sin(ScallopBadge.lobes * angle));
+          r * (1 + ScallopBadge.ripple * math.sin(ScallopBadge.lobes * angle));
       final point = Offset(
         center.dx + rr * math.sin(angle),
         center.dy - rr * math.cos(angle),
@@ -358,8 +353,16 @@ class CrossPainter extends CustomPainter {
       ..strokeWidth = s * badgeGlyphStrokeRatio
       ..strokeCap = StrokeCap.round
       ..color = color;
-    canvas.drawLine(Offset(s * 0.32, s * 0.32), Offset(s * 0.68, s * 0.68), paint);
-    canvas.drawLine(Offset(s * 0.68, s * 0.32), Offset(s * 0.32, s * 0.68), paint);
+    canvas.drawLine(
+      Offset(s * 0.32, s * 0.32),
+      Offset(s * 0.68, s * 0.68),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(s * 0.68, s * 0.32),
+      Offset(s * 0.32, s * 0.68),
+      paint,
+    );
   }
 
   @override

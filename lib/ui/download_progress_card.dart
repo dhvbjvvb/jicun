@@ -253,6 +253,7 @@ class DownloadProgressCardState extends State<DownloadProgressCard> {
       ),
     );
   }
+
   /// 窗口收掉时把那个出口计时器一起收:留着就是"测试里报 Timer is still pending"
   /// (widget 测试会在销毁后判它),真机上则是一个没人管的 8 秒回调。
   @override
@@ -261,7 +262,6 @@ class DownloadProgressCardState extends State<DownloadProgressCard> {
     _cancelEscape = null;
     super.dispose();
   }
-
 
   String _title() {
     if (_failed) return '${widget.title} · 下载中断';

@@ -47,4 +47,3 @@ Future<String?> engineClipboardText() async {
     return null;
   }
 }
-

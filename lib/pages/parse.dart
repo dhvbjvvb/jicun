@@ -266,4 +266,3 @@ class PasteLinkCard extends StatelessWidget {
     );
   }
 }
-

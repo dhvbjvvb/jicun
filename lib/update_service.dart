@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import 'package:http/io_client.dart';
+
 import 'api_host.dart';
 import 'preferred_ip.dart';
 
@@ -324,7 +325,10 @@ ReleaseInfo? releaseFromJson(Map<String, dynamic> json, {String? abi}) {
     mirrorUrls: kAssetMirrorUrls(tag, name),
     directUrl: kReleaseAssetUrl(tag, name),
     publishedAt: published is String ? DateTime.tryParse(published) : null,
-    apkSha256: apkSha256Of(asset, json['body'] is String ? json['body'] as String : ''),
+    apkSha256: apkSha256Of(
+      asset,
+      json['body'] is String ? json['body'] as String : '',
+    ),
   );
 }
 

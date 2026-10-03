@@ -99,8 +99,7 @@ class HistoryStore {
       entries = list is List
           ? <HistoryEntry>[
               for (final item in list)
-                if (item is Map<String, dynamic>)
-                  HistoryEntry.fromJson(item),
+                if (item is Map<String, dynamic>) HistoryEntry.fromJson(item),
             ]
           : <HistoryEntry>[];
     } catch (_) {

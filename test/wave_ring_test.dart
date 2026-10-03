@@ -19,7 +19,9 @@ void main() {
   List<(double, double)> samplesOf(Path path, {int count = 2000}) {
     final metric = path.computeMetrics().single;
     return List<(double, double)>.generate(count, (i) {
-      final position = metric.getTangentForOffset(metric.length * i / count)!.position;
+      final position = metric
+          .getTangentForOffset(metric.length * i / count)!
+          .position;
       final offset = position - center;
       final angle = math.atan2(offset.dx, -offset.dy) % (2 * math.pi);
       return (angle, offset.distance);
@@ -71,10 +73,22 @@ void main() {
     // 整条线都在「半径 ± 浪高」的圈里:浪尖不一定正对上下左右,
     // 所以只能验包住,不能验贴着。
     final bounds = wave().getBounds();
-    expect(bounds.left, greaterThanOrEqualTo(center.dx - radius - amplitude - 0.3));
-    expect(bounds.right, lessThanOrEqualTo(center.dx + radius + amplitude + 0.3));
-    expect(bounds.top, greaterThanOrEqualTo(center.dy - radius - amplitude - 0.3));
-    expect(bounds.bottom, lessThanOrEqualTo(center.dy + radius + amplitude + 0.3));
+    expect(
+      bounds.left,
+      greaterThanOrEqualTo(center.dx - radius - amplitude - 0.3),
+    );
+    expect(
+      bounds.right,
+      lessThanOrEqualTo(center.dx + radius + amplitude + 0.3),
+    );
+    expect(
+      bounds.top,
+      greaterThanOrEqualTo(center.dy - radius - amplitude - 0.3),
+    );
+    expect(
+      bounds.bottom,
+      lessThanOrEqualTo(center.dy + radius + amplitude + 0.3),
+    );
     // 也不该缩成里面那个小圈
     expect(bounds.width, greaterThanOrEqualTo(2 * (radius - amplitude)));
     expect(bounds.height, greaterThanOrEqualTo(2 * (radius - amplitude)));
@@ -108,11 +122,7 @@ void main() {
       final nearest = whole.reduce(
         (a, b) => (a.$1 - angle).abs() <= (b.$1 - angle).abs() ? a : b,
       );
-      expect(
-        r,
-        closeTo(nearest.$2, 0.2),
-        reason: '角度 $angle 处两段弧的半径不一样:浪没对齐',
-      );
+      expect(r, closeTo(nearest.$2, 0.2), reason: '角度 $angle 处两段弧的半径不一样:浪没对齐');
     }
   });
 }

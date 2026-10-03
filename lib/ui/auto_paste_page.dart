@@ -1,4 +1,3 @@
-
 import 'package:flutter/cupertino.dart';
 // material 是**选择性**转出 foundation 的,defaultTargetPlatform 不在里面,得自己引。
 import 'package:jicun/shell_controller.dart';
@@ -40,9 +39,8 @@ class AutoPastePage extends StatelessWidget {
                   title: '进入APP自动粘贴并解析首条链接',
                   subtitle: '从其他平台复制链接后,打开即自动解析',
                   value: app.autoPasteParse,
-                  onChanged: (value) => app.applySetting(
-                    () => app.autoPasteParse = value,
-                  ),
+                  onChanged: (value) =>
+                      app.applySetting(() => app.autoPasteParse = value),
                 ),
               ),
             ],

@@ -1,4 +1,3 @@
-
 import 'package:flutter/cupertino.dart';
 // material 是**选择性**转出 foundation 的,defaultTargetPlatform 不在里面,得自己引。
 import 'package:flutter/services.dart';
@@ -84,10 +83,7 @@ class AboutAppPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   const AboutInfoCard(title: '制作人', value: '春日大阪'),
                   const SizedBox(height: 12),
-                  const AboutInfoCard(
-                    title: '彩蛋出席',
-                    value: '奶龙,不知名小人物,不知名大人物',
-                  ),
+                  const AboutInfoCard(title: '彩蛋出席', value: '奶龙,不知名小人物,不知名大人物'),
                   const SizedBox(height: 12),
                   const AboutInfoCard(
                     title: '免责声明',
@@ -126,7 +122,12 @@ class AboutAppPage extends StatelessWidget {
 /// [onTap] 非空时整行可点(开源地址那张用它复制)。**不给"点击即可复制"这类提示**:
 /// 是用户点名的。点了有回音就够了。
 class AboutInfoCard extends StatelessWidget {
-  const AboutInfoCard({super.key, required this.title, required this.value, this.onTap});
+  const AboutInfoCard({
+    super.key,
+    required this.title,
+    required this.value,
+    this.onTap,
+  });
 
   final String title;
   final String value;

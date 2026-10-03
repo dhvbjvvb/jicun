@@ -19,6 +19,7 @@ import 'package:jicun/downloader.dart';
 import 'package:jicun/main.dart';
 import 'package:jicun/preferred_ip.dart';
 import 'package:jicun/ui/audio_stage.dart';
+
 import 'widget_support.dart';
 
 void main() {
@@ -33,7 +34,6 @@ void main() {
   PreferredIpUpdater.overrideClient(
     MockClient((_) async => http.Response('{"ips":[]}', 200)),
   );
-
 
   group('首次进入的权限', () {
     /// 打开 App。更新检查一律关掉:这里验的是权限,不能真去打 GitHub。
@@ -228,5 +228,4 @@ void main() {
       expect(find.text('还差一步'), findsOneWidget);
     });
   });
-
 }

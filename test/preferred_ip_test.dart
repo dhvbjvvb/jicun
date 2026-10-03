@@ -198,8 +198,8 @@ void main() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
       setApiHost(kApiHosts.first);
-      PreferredIpUpdater.fallbackClientFactory =
-          () => MockClient((_) async => http.Response('', 502));
+      PreferredIpUpdater.fallbackClientFactory = () =>
+          MockClient((_) async => http.Response('', 502));
     });
     tearDown(() {
       PreferredIpConnector.remote = const [];
@@ -428,8 +428,8 @@ void main() {
       supportedHosts = const [];
       setApiHost(kApiHosts.first);
       // 这条路上也可能走到兜底 client,一并挡住。
-      PreferredIpUpdater.fallbackClientFactory =
-          () => MockClient((_) async => http.Response('', 502));
+      PreferredIpUpdater.fallbackClientFactory = () =>
+          MockClient((_) async => http.Response('', 502));
     });
     tearDown(() {
       PreferredIpConnector.remote = const [];
@@ -454,9 +454,9 @@ void main() {
 
       await refreshPreferredIps(prefs);
 
-      final cached =
-          jsonDecode(prefs.getString(kPrefsPreferredIps)!)
-              as Map<String, dynamic>;
+      final cached = jsonDecode(
+        prefs.getString(kPrefsPreferredIps)!,
+      ) as Map<String, dynamic>;
       expect(cached['hosts'], ['new.example.com']);
       expect(cached['ips'], ['9.9.9.9']);
       expect(cached['supported'], ['v.douyin.com']);

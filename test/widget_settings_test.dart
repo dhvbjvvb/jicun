@@ -25,6 +25,7 @@ import 'package:jicun/sponsor_store.dart';
 import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/ui/notifications.dart';
 import 'package:jicun/ui/playback.dart';
+
 import 'widget_support.dart';
 
 void main() {
@@ -44,7 +45,6 @@ void main() {
   // 换成"什么都拉不到"—— 两个出口(普通线路 / 优选 IP 连接器)一起堵上,
   // 用例不会去连真接口域名,页面显示的就是内置兜底那份。
   sponsorStore.fetchOverride = (_) async => null;
-
 
   testWidgets('系统主题卡:点开滑出三个选项,选一个回弹收起', (tester) async {
     usePhoneSurface(tester);
@@ -470,15 +470,10 @@ void main() {
       reason: '4xx 是直链失效,重试无用,得重新解析',
     );
     expect(
-      downloadErrorMessage(
-        const HttpException('文件不完整:1234/5678 字节'),
-      ),
+      downloadErrorMessage(const HttpException('文件不完整:1234/5678 字节')),
       '文件不完整，请重试',
     );
-    expect(
-      downloadErrorMessage(const DownloadCancelled()),
-      '已取消',
-    );
+    expect(downloadErrorMessage(const DownloadCancelled()), '已取消');
     // 音频抽轨端点(自己的 /audio)失败时回的是中文理由,那句比「服务器暂时不可用」
     // 具体得多 —— 用户看到「这段视频没有可提取的音轨」才知道该换个链接。
     expect(
@@ -597,5 +592,4 @@ void main() {
   });
 
   // ────────────────────────── 检查更新 ──────────────────────────
-
 }

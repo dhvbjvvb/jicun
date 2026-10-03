@@ -148,10 +148,7 @@ Future<List<int>?> _coverBytes(String url) async {
 
 /// 认得出的图片类型。认不出返回 null —— 认不出就不写 `covr`/`APIC`,写一个
 /// 类型标错的封面比不写更糟。
-enum _ImageKind {
-  jpeg,
-  png,
-}
+enum _ImageKind { jpeg, png }
 
 _ImageKind? _imageKind(List<int> bytes) {
   if (bytes.length >= 3 &&
@@ -246,10 +243,7 @@ List<int>? writeMp4Tag(List<int> src, AudioTagInfo tags, List<int>? cover) {
   }
   ilstBody.addAll(<int>[for (final item in items) ...item]);
 
-  final metaBox = _box('meta', <int>[
-    ...metaPrefix,
-    ..._box('ilst', ilstBody),
-  ]);
+  final metaBox = _box('meta', <int>[...metaPrefix, ..._box('ilst', ilstBody)]);
   final udtaBody = <int>[];
   var metaPlaced = false;
   if (udta != null) {
@@ -350,7 +344,10 @@ List<int> _mp4Cover(List<int> image, int type) => _box(_kCovr, <int>[
 /// hdlr 声明这是 iTunes 那套元数据(`mdir` + `appl`)。少了它,有的播放器会把
 /// 整块 ilst 当不认识的东西跳过 —— 标签写了等于没写。
 final List<int> _kMetaPrefix = <int>[
-  0, 0, 0, 0,
+  0,
+  0,
+  0,
+  0,
   ..._box('hdlr', <int>[
     0, 0, 0, 0, // version / flags
     0, 0, 0, 0, // pre_defined
@@ -503,7 +500,9 @@ List<int> _id3Text(String id, String text) =>
 /// 帧体:编码 + 3 字节语言(`XXX` = 未定义) + 以 0 结尾的描述 + 正文。
 List<int> _id3Lyrics(String text) => _id3Frame('USLT', <int>[
   0x03,
-  0x58, 0x58, 0x58,
+  0x58,
+  0x58,
+  0x58,
   0x00,
   ...utf8.encode(text),
 ]);
@@ -527,7 +526,8 @@ List<int> _id3Cover(List<int> image) {
 List<int> _id3Frame(String id, List<int> body) => <int>[
   ...id.codeUnits,
   ..._syncSafeBytes(body.length),
-  0, 0,
+  0,
+  0,
   ...body,
 ];
 

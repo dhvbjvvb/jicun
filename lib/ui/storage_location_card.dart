@@ -94,10 +94,7 @@ class _StorageLocationCardState extends State<StorageLocationCard> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-            child: GoogleCardTitle(
-              isDark: isDark,
-              text: '存储保存位置（点击路径可自定义）',
-            ),
+            child: GoogleCardTitle(isDark: isDark, text: '存储保存位置（点击路径可自定义）'),
           ),
           for (final (kind, label, defaultPath) in _rows)
             _StoragePathRow(

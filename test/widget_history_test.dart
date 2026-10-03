@@ -20,6 +20,7 @@ import 'package:jicun/main.dart';
 import 'package:jicun/parse_service.dart';
 import 'package:jicun/preferred_ip.dart';
 import 'package:jicun/ui/audio_stage.dart';
+
 import 'widget_support.dart';
 
 void main() {
@@ -34,7 +35,6 @@ void main() {
   PreferredIpUpdater.overrideClient(
     MockClient((_) async => http.Response('{"ips":[]}', 200)),
   );
-
 
   testWidgets('历史板块:单击一张卡回解析页重新解析', (tester) async {
     usePhoneSurface(tester);
@@ -259,10 +259,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('开始解析'));
     await tester.pumpAndSettle();
-    expect(
-      hasImageWith(tester, 'https://example.invalid/cover-A.jpg'),
-      isTrue,
-    );
+    expect(hasImageWith(tester, 'https://example.invalid/cover-A.jpg'), isTrue);
 
     // 点一下输入框解锁,换成第二条链接再解析
     await tester.tap(find.byType(CupertinoTextField));
@@ -276,10 +273,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 媒体窗口现在必须是第二条的封面 —— 播放器/封面还停在上一条就是状态没换
-    expect(
-      hasImageWith(tester, 'https://example.invalid/cover-B.jpg'),
-      isTrue,
-    );
+    expect(hasImageWith(tester, 'https://example.invalid/cover-B.jpg'), isTrue);
     expect(
       hasImageWith(tester, 'https://example.invalid/cover-A.jpg'),
       isFalse,
@@ -615,5 +609,4 @@ void main() {
 
     expect(find.text('暂无解析记录'), findsOneWidget);
   });
-
 }

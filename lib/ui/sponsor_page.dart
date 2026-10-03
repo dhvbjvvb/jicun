@@ -122,11 +122,7 @@ class _SponsorPageState extends State<SponsorPage> {
               name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 14,
-                fontWeight: weight,
-              ),
+              style: TextStyle(color: color, fontSize: 14, fontWeight: weight),
             ),
           ),
           const SizedBox(width: 10),

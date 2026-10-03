@@ -97,7 +97,6 @@ List<MdRun> mdRuns(String raw, {bool code = false}) {
   return out;
 }
 
-
 /// 扫描时那一套「当前样式」。[_scanInline] 靠它记住进出标签的开关。
 class _MdStyle {
   const _MdStyle({
@@ -511,4 +510,3 @@ List<MdLine> parseMarkdown(String source) {
   }
   return lines;
 }
-

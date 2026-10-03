@@ -15,9 +15,9 @@ void main() {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      calls.add(call);
-      return call.method == 'publish' ? 'content://doc/1' : null;
-    });
+          calls.add(call);
+          return call.method == 'publish' ? 'content://doc/1' : null;
+        });
     addTearDown(
       () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null),

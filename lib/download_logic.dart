@@ -34,7 +34,10 @@ class Chunk {
 Chunk? claimedChunk(int claim, int size, int chunkBytes) {
   final start = claim * chunkBytes;
   if (start >= size) return null;
-  return Chunk(start, (size < start + chunkBytes ? size : start + chunkBytes) - 1);
+  return Chunk(
+    start,
+    (size < start + chunkBytes ? size : start + chunkBytes) - 1,
+  );
 }
 
 /// 同一次认领,但**把文件末尾那段切成小段**。

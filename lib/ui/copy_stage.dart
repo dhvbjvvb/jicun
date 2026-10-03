@@ -73,9 +73,7 @@ class CopyStageState extends State<CopyStage> {
           child: ConstrainedBox(
             // 不满 12 行时不设上限,窗口自然收缩到文字高度
             constraints: BoxConstraints(
-              maxHeight: overflows
-                  ? _lineBox * kCopyMaxLines
-                  : double.infinity,
+              maxHeight: overflows ? _lineBox * kCopyMaxLines : double.infinity,
             ),
             child: overflows
                 // 用 CupertinoScrollbar 而不是 Material 的 Scrollbar:

@@ -201,8 +201,7 @@ class ReleaseNotesPreview extends StatelessWidget {
   }
 
   /// 链接色。和设置页、历史页那些可点文字同一档。
-  Color get _linkColor =>
-      Palette.of(isDark).accent;
+  Color get _linkColor => Palette.of(isDark).accent;
 
   /// 一行的完整 span。渲染和量高度共用同一份,样式不会跑偏。
   TextSpan _spanFor(MdLine line) {
@@ -317,9 +316,7 @@ class ReleaseNotesPreview extends StatelessWidget {
         // textAlign 是看不出来的。
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final line in lines) _lineWidget(line),
-        ],
+        children: [for (final line in lines) _lineWidget(line)],
       ),
     );
 

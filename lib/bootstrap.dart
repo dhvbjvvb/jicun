@@ -104,7 +104,10 @@ Future<void> refreshPreferredIps(SharedPreferences? prefs) async {
       'supported': config.supported,
     }),
   );
-  await prefs?.setInt(kPrefsPreferredIpsAt, DateTime.now().millisecondsSinceEpoch);
+  await prefs?.setInt(
+    kPrefsPreferredIpsAt,
+    DateTime.now().millisecondsSinceEpoch,
+  );
   // 域名可能被服务端换掉了(上一个被运营商阻断时),这个必须落盘 ——
   // 下次冷启动要先用它,而不是先用内置域名去撞一次墙。
   await prefs?.setString(kPrefsApiHost, apiHost);

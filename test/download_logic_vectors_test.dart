@@ -48,11 +48,17 @@ void main() {
           expect(got.end, row[1], reason: '${c['name']}:第 $claim 段的终点');
           claim++;
         }
-        expect(claimedChunk(claims, size, chunk), isNull,
-            reason: '${c['name']}:认领完之后应该是 null');
+        expect(
+          claimedChunk(claims, size, chunk),
+          isNull,
+          reason: '${c['name']}:认领完之后应该是 null',
+        );
       } else {
         // 没给行的(认领次数太多):迭代验证每一段接上一段,总覆盖等于 size。
-        final flat = tiledChunks(size, (claim) => claimedChunk(claim, size, chunk));
+        final flat = tiledChunks(
+          size,
+          (claim) => claimedChunk(claim, size, chunk),
+        );
         expect(flat, claims, reason: '${c['name']}:认领次数');
       }
       expect(c['covers'], isTrue, reason: '${c['name']}:覆盖不完整');
@@ -165,17 +171,25 @@ void main() {
       var i = 0;
       for (final rawStep in expected['steps'] as List<dynamic>) {
         final step = rawStep as Map<String, dynamic>;
-        expect(book.noteFailure(step['progress'] as int), step['retry'],
-            reason: '${c['name']}:第 $i 步的 retry');
-        expect(book.delayMs, step['delayMs'],
-            reason: '${c['name']}:第 $i 步的退避');
+        expect(
+          book.noteFailure(step['progress'] as int),
+          step['retry'],
+          reason: '${c['name']}:第 $i 步的 retry',
+        );
+        expect(book.delayMs, step['delayMs'], reason: '${c['name']}:第 $i 步的退避');
         i++;
       }
-      expect(book.attempts, expected['attempts'],
-          reason: '${c['name']}:attempts');
+      expect(
+        book.attempts,
+        expected['attempts'],
+        reason: '${c['name']}:attempts',
+      );
       expect(book.stalls, expected['stalls'], reason: '${c['name']}:stalls');
-      expect(book.delayMs, expected['finalDelayMs'],
-          reason: '${c['name']}:收尾时的退避');
+      expect(
+        book.delayMs,
+        expected['finalDelayMs'],
+        reason: '${c['name']}:收尾时的退避',
+      );
     }
   });
 }
@@ -187,8 +201,11 @@ int tiledChunks(int size, Chunk? Function(int claim) next) {
   while (true) {
     final chunk = next(claims);
     if (chunk == null) break;
-    expect(chunk.start, expectStart,
-        reason: '第 $claims 段起点是 ${chunk.start},应该接在 $expectStart');
+    expect(
+      chunk.start,
+      expectStart,
+      reason: '第 $claims 段起点是 ${chunk.start},应该接在 $expectStart',
+    );
     expectStart = chunk.end + 1;
     claims++;
     if (claims > 1000000) fail('认领不收敛,疑似死循环');

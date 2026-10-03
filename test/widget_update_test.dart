@@ -20,6 +20,7 @@ import 'package:jicun/main.dart';
 import 'package:jicun/preferred_ip.dart';
 import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/update_service.dart';
+
 import 'widget_support.dart';
 
 void main() {
@@ -34,7 +35,6 @@ void main() {
   PreferredIpUpdater.overrideClient(
     MockClient((_) async => http.Response('{"ips":[]}', 200)),
   );
-
 
   group('检查更新', () {
     /// 打开 App。更新服务由用例自己给(见 useStubReleases)。
@@ -275,5 +275,4 @@ void main() {
   });
 
   // ────────────────────────── 首次进入的权限 ──────────────────────────
-
 }

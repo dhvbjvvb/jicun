@@ -92,14 +92,26 @@ void main() {
       '$res/drawable-night/launch_background.xml',
     ]) {
       final xml = read(path);
-      expect(xml, contains('@drawable/splash_logo'),
-          reason: _locked('$path 没有引用原有鸟图'));
-      expect(xml, contains('android:width="288dp"'),
-          reason: _locked('$path 的启动图宽度不是 288dp'));
-      expect(xml, contains('android:height="288dp"'),
-          reason: _locked('$path 的启动图高度不是 288dp'));
-      expect(xml, contains('android:gravity="center"'),
-          reason: _locked('$path 的启动图不居中'));
+      expect(
+        xml,
+        contains('@drawable/splash_logo'),
+        reason: _locked('$path 没有引用原有鸟图'),
+      );
+      expect(
+        xml,
+        contains('android:width="288dp"'),
+        reason: _locked('$path 的启动图宽度不是 288dp'),
+      );
+      expect(
+        xml,
+        contains('android:height="288dp"'),
+        reason: _locked('$path 的启动图高度不是 288dp'),
+      );
+      expect(
+        xml,
+        contains('android:gravity="center"'),
+        reason: _locked('$path 的启动图不居中'),
+      );
     }
   });
 
@@ -113,17 +125,17 @@ void main() {
         xml,
         contains(
           '<item name="android:windowSplashScreenBackground">'
-           '@color/launch_background_color</item>',
+          '@color/launch_background_color</item>',
         ),
-         reason: _locked('$path 的启动底色指向变了'),
+        reason: _locked('$path 的启动底色指向变了'),
       );
       expect(
         xml,
         contains(
           '<item name="android:windowSplashScreenAnimatedIcon">'
-           '@drawable/splash_logo</item>',
+          '@drawable/splash_logo</item>',
         ),
-         reason: _locked('$path 的启动图没有指向原有鸟图'),
+        reason: _locked('$path 的启动图没有指向原有鸟图'),
       );
     }
   });
@@ -157,12 +169,18 @@ void main() {
       contains('android:theme="@style/LaunchThemeDark"'),
       reason: _locked('深色启动入口的主题指向变了'),
     );
-    expect(_activityBlock(xml, 'LaunchDarkActivity'),
-        contains('android:enabled="false"'));
-    expect(_activityBlock(xml, 'LaunchLightActivity'),
-        contains('android.intent.category.LAUNCHER'));
-    expect(_activityBlock(xml, 'LaunchDarkActivity'),
-        contains('android.intent.category.LAUNCHER'));
+    expect(
+      _activityBlock(xml, 'LaunchDarkActivity'),
+      contains('android:enabled="false"'),
+    );
+    expect(
+      _activityBlock(xml, 'LaunchLightActivity'),
+      contains('android.intent.category.LAUNCHER'),
+    );
+    expect(
+      _activityBlock(xml, 'LaunchDarkActivity'),
+      contains('android.intent.category.LAUNCHER'),
+    );
   });
 
   test('MainActivity 自己不再挂 launcher 入口', () {
@@ -209,8 +227,11 @@ void main() {
       );
     }
     final v31 = read('$res/values-v31/styles.xml');
-    expect(v31, contains('@color/launch_background_color'),
-        reason: _locked('API 31+ 启动底色指向变了'));
+    expect(
+      v31,
+      contains('@color/launch_background_color'),
+      reason: _locked('API 31+ 启动底色指向变了'),
+    );
   });
 
   test('两个启动入口都保留静态背景和鸟图', () {
@@ -232,14 +253,26 @@ void main() {
       '$res/drawable/launch_dark.xml',
     ]) {
       final xml = read(path);
-      expect(xml, contains('@drawable/splash_logo'),
-          reason: _locked('$path 没有引用原有鸟图'));
-      expect(xml, contains('android:width="288dp"'),
-          reason: _locked('$path 的启动图宽度不是 288dp'));
-      expect(xml, contains('android:height="288dp"'),
-          reason: _locked('$path 的启动图高度不是 288dp'));
-      expect(xml, contains('android:gravity="center"'),
-          reason: _locked('$path 的启动图不居中'));
+      expect(
+        xml,
+        contains('@drawable/splash_logo'),
+        reason: _locked('$path 没有引用原有鸟图'),
+      );
+      expect(
+        xml,
+        contains('android:width="288dp"'),
+        reason: _locked('$path 的启动图宽度不是 288dp'),
+      );
+      expect(
+        xml,
+        contains('android:height="288dp"'),
+        reason: _locked('$path 的启动图高度不是 288dp'),
+      );
+      expect(
+        xml,
+        contains('android:gravity="center"'),
+        reason: _locked('$path 的启动图不居中'),
+      );
     }
     expect(
       read('$res/drawable/launch_light.xml'),
@@ -260,8 +293,12 @@ void main() {
         .map((m) => m.group(1)!)
         .toSet();
     final inKotlin = RegExp(r'"(Launch\w+Activity)"')
-        .allMatches(read('android/app/src/main/kotlin/com/videofix/jicun/'
-            'LaunchActivities.kt'))
+        .allMatches(
+          read(
+            'android/app/src/main/kotlin/com/videofix/jicun/'
+            'LaunchActivities.kt',
+          ),
+        )
         .map((m) => m.group(1)!)
         .toSet();
     expect(inManifest, isNotEmpty, reason: _locked('清单里找不到启动入口了'));
@@ -282,7 +319,8 @@ void main() {
     expect(
       tag.contains('android:allowBackup="false"'),
       isTrue,
-      reason: 'allowBackup 又开了,或者属性没写在 <application> 上(没声明=默认 true)。'
+      reason:
+          'allowBackup 又开了,或者属性没写在 <application> 上(没声明=默认 true)。'
           '为什么关、代价是什么,见 AndroidManifest.xml 里那段说明。',
     );
   });
@@ -308,4 +346,3 @@ String _locked(String what) =>
     '红了不是功能坏了,是启动图被改了:故意的就把本文件里对应的那条期望值一起改掉,'
     '不是故意的就把那次改动退回去。改完记得跑 '
     '`flutter test test/splash_params_test.dart test/splash_asset_test.dart`。';
-

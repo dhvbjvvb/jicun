@@ -316,9 +316,8 @@ void main() {
 
       // 本来就是绝对地址的一律不动(平台 CDN、上游那几条)
       expect(
-        ParseResult.fromJson(const {
-          'audio_url': 'https://cdn.example/a.mp3',
-        }).audioUrl,
+        ParseResult.fromJson(const {'audio_url': 'https://cdn.example/a.mp3'})
+            .audioUrl,
         'https://cdn.example/a.mp3',
       );
       // 上游那条路(music.url)同一条规则
@@ -689,9 +688,7 @@ void main() {
       );
       // 上限算的是"标题 + 后缀 + 序号",不是标题自己
       expect(
-        utf8
-                .encode(safeFileName('x' * 200, ext: '.mp4', index: 2))
-                .length +
+        utf8.encode(safeFileName('x' * 200, ext: '.mp4', index: 2)).length +
             4 +
             2,
         68,

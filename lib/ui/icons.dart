@@ -37,4 +37,3 @@ String settingsIcon(BuildContext context, String file) {
       : '浅色主题';
   return '$mode（设置板块选项图标）/$file';
 }
-

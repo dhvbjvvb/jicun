@@ -223,11 +223,7 @@ class HistoryCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              SelectDot(
-                visible: selecting,
-                selected: selected,
-                isDark: isDark,
-              ),
+              SelectDot(visible: selecting, selected: selected, isDark: isDark),
               CoverSlot(isDark: isDark, coverUrl: result.coverUrl),
               const SizedBox(width: 14),
               Expanded(
@@ -400,4 +396,3 @@ class CoverSlot extends StatelessWidget {
     );
   }
 }
-

@@ -5,7 +5,6 @@
 // 「测试」一节)。分片之后每个文件一个 isolate,单个分片崩不会波及其它。
 // 共享的假后端与 helper 在 test/widget_support.dart。
 
-
 import 'package:flutter/cupertino.dart';
 // material 是**选择性**转出 foundation 的,桌面端判据那两个名字不在里面。
 import 'package:flutter/material.dart';
@@ -18,6 +17,7 @@ import 'package:jicun/downloader.dart';
 import 'package:jicun/main.dart';
 import 'package:jicun/preferred_ip.dart';
 import 'package:jicun/ui/audio_stage.dart';
+
 import 'widget_support.dart';
 
 void main() {
@@ -32,7 +32,6 @@ void main() {
   PreferredIpUpdater.overrideClient(
     MockClient((_) async => http.Response('{"ips":[]}', 200)),
   );
-
 
   testWidgets('解析页:解析前只有粘贴卡,解析成功后混合等预览卡才入场', (tester) async {
     usePhoneSurface(tester);

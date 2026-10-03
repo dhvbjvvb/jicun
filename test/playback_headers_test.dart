@@ -12,7 +12,9 @@ void main() {
 
     // 视频 CDN 也算抖音系
     expect(
-      playbackHeaders('https://v3-dy-a-x.ixigua.com/x/video/tos/cn/a.mp4')['User-Agent'],
+      playbackHeaders(
+        'https://v3-dy-a-x.ixigua.com/x/video/tos/cn/a.mp4',
+      )['User-Agent'],
       kBrowserUserAgent,
     );
     expect(

@@ -22,6 +22,7 @@ import 'package:jicun/preferred_ip.dart';
 import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/ui/download_progress_card.dart';
 import 'package:jicun/ui/progress_ring.dart';
+
 import 'widget_support.dart';
 
 void main() {
@@ -36,7 +37,6 @@ void main() {
   PreferredIpUpdater.overrideClient(
     MockClient((_) async => http.Response('{"ips":[]}', 200)),
   );
-
 
   testWidgets('解析页:点下载媒体弹出进度卡片,不是原来的提示框', (tester) async {
     usePhoneSurface(tester);
@@ -116,9 +116,14 @@ void main() {
     useStubDownloader();
     // 假下载器改成开头就砸:失败态该在这张卡里收场
     // (通知那条路不接通道也不该挡住失败态 —— 那正是以前卡住的原因之一)
-    Downloader.fetchImpl =
-        (item, temp, onFraction, cancelled, onSize, client) async =>
-            throw const SocketException('连接被重置');
+    Downloader.fetchImpl = (
+      item,
+      temp,
+      onFraction,
+      cancelled,
+      onSize,
+      client,
+    ) async => throw const SocketException('连接被重置');
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await tester.pumpWidget(const LiquidGlassDemo());
     await tester.pump(const Duration(milliseconds: 300));

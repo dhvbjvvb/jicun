@@ -324,23 +324,40 @@ void main() {
     });
 
     test('嵌套结构整份过一遍:图集 / 实况图 / 独立音轨都逃不掉', () {
-      final out = secureMediaUrls(<String, dynamic>{
-        'url': 'http://a.com/v.mp4',
-        'images': <dynamic>['http://a.com/1.webp', 'http://a.com/2.webp'],
-        'live_photo': <dynamic>[
-          <String, dynamic>{'image': 'http://a.com/f.webp', 'video': 'http://a.com/l.mp4'},
-        ],
-        'music': <String, dynamic>{'url': 'http://a.com/a.m4a'},
-        'video_backup': <dynamic>[
-          <String, dynamic>{'url': 'http://a.com/720.mp4', 'label': '高清'},
-        ],
-      })! as Map<String, dynamic>;
+      final out =
+          secureMediaUrls(<String, dynamic>{
+                'url': 'http://a.com/v.mp4',
+                'images': <dynamic>[
+                  'http://a.com/1.webp',
+                  'http://a.com/2.webp',
+                ],
+                'live_photo': <dynamic>[
+                  <String, dynamic>{
+                    'image': 'http://a.com/f.webp',
+                    'video': 'http://a.com/l.mp4',
+                  },
+                ],
+                'music': <String, dynamic>{'url': 'http://a.com/a.m4a'},
+                'video_backup': <dynamic>[
+                  <String, dynamic>{
+                    'url': 'http://a.com/720.mp4',
+                    'label': '高清',
+                  },
+                ],
+              })!
+              as Map<String, dynamic>;
 
       expect(out['url'], 'https://a.com/v.mp4');
-      expect(out['images'], <String>['https://a.com/1.webp', 'https://a.com/2.webp']);
+      expect(out['images'], <String>[
+        'https://a.com/1.webp',
+        'https://a.com/2.webp',
+      ]);
       expect((out['live_photo'] as List).first['video'], 'https://a.com/l.mp4');
       expect(out['music']['url'], 'https://a.com/a.m4a');
-      expect((out['video_backup'] as List).first['url'], 'https://a.com/720.mp4');
+      expect(
+        (out['video_backup'] as List).first['url'],
+        'https://a.com/720.mp4',
+      );
     });
 
     test('端到端:上游给的全是 http,解析出来后模型里一个 http 都不剩', () async {
@@ -349,7 +366,10 @@ void main() {
       data['images'] = <dynamic>['http://example.invalid/1.webp'];
       data['music'] = <String, dynamic>{'url': 'http://example.invalid/a.m4a'};
       data['live_photo'] = <dynamic>[
-        <String, dynamic>{'image': 'http://example.invalid/f.webp', 'video': 'http://example.invalid/l.mp4'},
+        <String, dynamic>{
+          'image': 'http://example.invalid/f.webp',
+          'video': 'http://example.invalid/l.mp4',
+        },
       ];
       useStubTwoUpstreams(upstream: () => _upstreamOk(data));
       final service = ParseService();
@@ -680,8 +700,20 @@ void main() {
         'size': 89710839,
         'video_backup': <Map<String, dynamic>>[
           {'url': mp4, 'label': '原画', 'quality': '原画', 'size': 89710839},
-          {'url': m3u8, 'label': '高清', 'quality': '720p', 'bit_rate': 1941000, 'size': 0},
-          {'url': m3u8, 'label': '高清', 'quality': '720p', 'bit_rate': 1941000, 'size': 0},
+          {
+            'url': m3u8,
+            'label': '高清',
+            'quality': '720p',
+            'bit_rate': 1941000,
+            'size': 0,
+          },
+          {
+            'url': m3u8,
+            'label': '高清',
+            'quality': '720p',
+            'bit_rate': 1941000,
+            'size': 0,
+          },
         ],
       }, platform: '快手');
 

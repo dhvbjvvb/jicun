@@ -54,11 +54,7 @@ void main() {
   });
 
   test('app 用的那份是裁过留白的那一版', () {
-    expect(
-      shaOf(res),
-      kSplashSha256,
-      reason: _locked('app 里的启动图被换过了'),
-    );
+    expect(shaOf(res), kSplashSha256, reason: _locked('app 里的启动图被换过了'));
   });
 }
 

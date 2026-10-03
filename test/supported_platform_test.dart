@@ -44,7 +44,10 @@ void main() {
     });
 
     test('非列表输入不炸', () {
-      expect(parseServerConfig('{"supported":"douyin.com"}').supported, isEmpty);
+      expect(
+        parseServerConfig('{"supported":"douyin.com"}').supported,
+        isEmpty,
+      );
     });
 
     test('只有 supported 时也不算空配置（否则会被 fetch 丢掉）', () {
@@ -94,7 +97,10 @@ void main() {
       // 视频号(已关)名下有 weixin.qq.com，白名单里不会有它；微信公众号在用的
       // mp.weixin.qq.com 有自己的条目。精确匹配下两者互不影响。
       supportedHosts = const ['mp.weixin.qq.com', 'b23.tv'];
-      expect(unsupportedPlatformMessage('https://mp.weixin.qq.com/s/abc'), isNull);
+      expect(
+        unsupportedPlatformMessage('https://mp.weixin.qq.com/s/abc'),
+        isNull,
+      );
       expect(
         unsupportedPlatformMessage('https://channels.weixin.qq.com/x'),
         '暂不支持该平台',

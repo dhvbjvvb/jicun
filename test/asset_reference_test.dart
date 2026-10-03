@@ -65,12 +65,13 @@ void main() {
   /// 而每个测试文件在 flutter test 里都是并行跑的,晚一点抢 CPU 都可能让
   /// widget_test 那种带真延时等待的用例踩线。
   String? cachedLib;
-  String libSource() => cachedLib ??= Directory('lib')
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((f) => f.path.endsWith('.dart'))
-      .map((f) => stripComments(f.readAsStringSync()))
-      .join('\n');
+  String libSource() =>
+      cachedLib ??= Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))
+          .map((f) => stripComments(f.readAsStringSync()))
+          .join('\n');
 
   /// 代码里出现的资源文件路径(已去注释)。
   Set<String> referencedAssets() {
@@ -95,14 +96,17 @@ void main() {
   test('pubspec 声明的整目录资源都在', () {
     // `- assets/xxx/` 这种整目录声明:目录不在,构建期只报一行 "unable to find",
     // 那时候已经晚了。
-    final declared = RegExp(r'^\s+-\s+(\S[^\s:]*/)\s*$', multiLine: true)
-        .allMatches(pubspec)
-        .map((m) => m.group(1)!)
-        .toList();
+    final declared = RegExp(
+      r'^\s+-\s+(\S[^\s:]*/)\s*$',
+      multiLine: true,
+    ).allMatches(pubspec).map((m) => m.group(1)!).toList();
     expect(declared, isNotEmpty, reason: '没从 pubspec 里读出资源目录,正则失效了');
     for (final dir in declared) {
-      expect(Directory(dir).existsSync(), isTrue,
-          reason: 'pubspec 声明了 $dir,磁盘上却没有这个目录');
+      expect(
+        Directory(dir).existsSync(),
+        isTrue,
+        reason: 'pubspec 声明了 $dir,磁盘上却没有这个目录',
+      );
     }
   });
 
@@ -110,8 +114,11 @@ void main() {
     final paths = referencedAssets();
     expect(paths, isNotEmpty, reason: '一个资源路径都没扫出来,正则大概写错了');
     for (final path in paths) {
-      expect(File(path).existsSync(), isTrue,
-          reason: '代码引用了 $path,磁盘上却没有 —— 界面上只会留个空盒子');
+      expect(
+        File(path).existsSync(),
+        isTrue,
+        reason: '代码引用了 $path,磁盘上却没有 —— 界面上只会留个空盒子',
+      );
     }
   });
 
@@ -128,16 +135,20 @@ void main() {
     };
 
     pairs.forEach((light, dark) {
-      Set<String> namesOf(String dir) => Directory(dir)
-          .listSync()
-          .whereType<File>()
-          .map((f) => f.uri.pathSegments.last)
-          .toSet();
+      Set<String> namesOf(String dir) =>
+          Directory(dir)
+              .listSync()
+              .whereType<File>()
+              .map((f) => f.uri.pathSegments.last)
+              .toSet();
 
       final lightFiles = namesOf(light);
       expect(lightFiles, isNotEmpty, reason: '$light 是空的');
-      expect(namesOf(dark), lightFiles,
-          reason: '$dark 和 $light 的文件名对不上 —— 少一张,换主题就是一个空盒子');
+      expect(
+        namesOf(dark),
+        lightFiles,
+        reason: '$dark 和 $light 的文件名对不上 —— 少一张,换主题就是一个空盒子',
+      );
       for (final name in lightFiles) {
         // 两种引用方式都算:
         //   - 首页/历史/弹窗/底栏那几套:调用点直接写字面量 '全选.svg';
@@ -147,8 +158,11 @@ void main() {
         final stem = name.contains('.')
             ? name.substring(0, name.lastIndexOf('.'))
             : name;
-        expect(libSource().contains(name) || libSource().contains(stem), isTrue,
-            reason: '$light/$name 没有任何代码引用(改名或删图之后忘了改调用点?)');
+        expect(
+          libSource().contains(name) || libSource().contains(stem),
+          isTrue,
+          reason: '$light/$name 没有任何代码引用(改名或删图之后忘了改调用点?)',
+        );
       }
     });
   });

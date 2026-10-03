@@ -205,19 +205,22 @@ flutter build apk --release -PallowDebugSigning=true   # 这个包的签名是 d
 
 ```bash
 flutter analyze
-.\tool\run_tests.ps1                 # 逐文件跑 test/，每个文件失败重试一次
+dart format lib test                 # 格式门：CI 会校验，先本地跑一遍
+.\tool\run_tests.ps1                 # 逐文件跑 test/；只在 tester 崩了时重试一次
 cd android && ./gradlew :app:testDebugUnitTest    # Kotlin：下载器纯逻辑、启动入口、媒体库命名、落盘规矩
 python tool/gen_logic_vectors.py     # 校验跨端测试向量与实现一致
 python tool/check_comment_refs.py    # 注释里点名的标识符必须还在
 flutter test integration_test        # 需要真机或模拟器
 ```
 
-**为什么要逐文件跑、还重试一次**：Windows 上的 `flutter_tester` 有一条引擎级缺陷 —— `ShaderMask` + 滚动列表在软件渲染下会以 `0xc0000005` 静默杀掉整个测试进程，一次带走同一文件里剩下的几十条用例。触发是概率性的（约 0.1%/用例），和具体用例无关。逐文件跑把爆炸半径限制在一个文件里，重试一次就把那点概率抹掉；本机与 CI 用同一套跑法，才不会出现「本地红、CI 绿」这种没法归因的情况。
+**为什么要逐文件跑、崩溃才重试一次**：Windows 上的 `flutter_tester` 有一条引擎级缺陷 —— `ShaderMask` + 滚动列表在软件渲染下会以 `0xc0000005` 静默杀掉整个测试进程，一次带走同一文件里剩下的几十条用例。触发是概率性的（约 0.1%/用例），和具体用例无关。逐文件跑把爆炸半径限制在一个文件里；**崩溃那次重试一次**把那点概率抹掉，本机与 CI 用同一套跑法，才不会出现「本地红、CI 绿」这种没法归因的情况。
+
+而**断言/异常失败一律不重试** —— 重试会把「偶尔挂一次」的真 bug 抹成绿色。判据是「看有没有失败标记」，不是「看有没有 `did not complete`」：后者只是崩溃的一种形态（实测崩得最干脆那次只剩一行 `loading …`），而加载期就被杀时 flutter 报的是 `Failed to load "…": Connection closed before test suite loaded.`，它同时带 `Failed to load` 和 `[E]`，先查标记就会把这条 flake 判成真失败。改过判据跑一下自检：`.\tool\run_tests.ps1 -SelfCheck`（14 条形状，含上面这些真实原文）。
 
 ### 项目结构
 
 ```
-lib/                   55 个 Dart 文件
+lib/                   56 个 Dart 文件
   main.dart            入口与根壳
   bootstrap.dart       启动编排：首帧前要办的事，与之后的后台活
   pages/               四个板块页：parse / history / preview / settings

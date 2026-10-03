@@ -5,7 +5,6 @@
 // 「测试」一节)。分片之后每个文件一个 isolate,单个分片崩不会波及其它。
 // 共享的假后端与 helper 在 test/widget_support.dart。
 
-
 import 'package:flutter/cupertino.dart';
 // material 是**选择性**转出 foundation 的,桌面端判据那两个名字不在里面。
 import 'package:flutter/material.dart';
@@ -22,6 +21,7 @@ import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/update_card.dart';
 import 'package:jicun/update_service.dart';
+
 import 'widget_support.dart';
 
 void main() {
@@ -36,7 +36,6 @@ void main() {
   PreferredIpUpdater.overrideClient(
     MockClient((_) async => http.Response('{"ips":[]}', 200)),
   );
-
 
   group('版本更新说明预览', () {
     /// 单独把卡片挂起来,pump 到弹层出来。
@@ -115,18 +114,10 @@ void main() {
       // 实际只有 242 宽,按屏幕算却量出 306 —— 242 字要 14 行、306 字只要 11 行,于是旧
       // 的量法会把这条说明判成"不超 12 行":滚动条不挂,多出来的两行直接画到下面的
       // 更新/忽略按钮上(测试里就是那个 RenderFlex 溢出)。
-      await showCard(
-        tester,
-        '这是一条很长的更新说明' * 22,
-        surface: const Size(412, 900),
-      );
+      await showCard(tester, '这是一条很长的更新说明' * 22, surface: const Size(412, 900));
 
       expect(find.byType(Scrollbar), findsOneWidget, reason: '14 行的说明必须能滚');
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: '不能有溢出:那说明文字压到按钮上了',
-      );
+      expect(tester.takeException(), isNull, reason: '不能有溢出:那说明文字压到按钮上了');
     });
 
     testWidgets('宽度变了行数跟着变:窄了要滚,宽了不挂', (tester) async {
@@ -155,7 +146,11 @@ void main() {
       );
 
       await pumpAt(120);
-      expect(find.byType(Scrollbar), findsOneWidget, reason: '120 宽放不下 12 行,必须能滚');
+      expect(
+        find.byType(Scrollbar),
+        findsOneWidget,
+        reason: '120 宽放不下 12 行,必须能滚',
+      );
 
       await pumpAt(600);
       expect(find.byType(Scrollbar), findsNothing, reason: '600 宽装得下,不该多一条空槽');
@@ -176,9 +171,8 @@ void main() {
       CupertinoApp(
         home: Builder(
           builder: (context) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(textScale)),
             child: Center(
               child: SizedBox(
                 width: width,
@@ -203,16 +197,8 @@ void main() {
       final twelve = [for (var i = 0; i < 12; i++) '第 $i 行'];
       await pumpNotes(tester, twelve);
       expect(find.text('第 11 行'), findsOneWidget);
-      expect(
-        find.byType(Scrollbar),
-        findsNothing,
-        reason: '正好 12 行装得下,不该挂滚动条',
-      );
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: '12 行必须真的装得下:溢出意味着末行被裁掉了',
-      );
+      expect(find.byType(Scrollbar), findsNothing, reason: '正好 12 行装得下,不该挂滚动条');
+      expect(tester.takeException(), isNull, reason: '12 行必须真的装得下:溢出意味着末行被裁掉了');
 
       await pumpNotes(tester, [...twelve, '第 12 行']);
       expect(find.byType(Scrollbar), findsOneWidget, reason: '13 行超了,必须能滚');
@@ -267,8 +253,8 @@ void main() {
       matching: find.byType(BoardScrollView),
     );
     final list = find
-      .descendant(of: board, matching: find.byType(Scrollable))
-      .first;
+        .descendant(of: board, matching: find.byType(Scrollable))
+        .first;
     double headerTop() => tester.getTopLeft(header).dy;
     double buttonTop() => tester.getTopLeft(find.text('选择')).dy;
 

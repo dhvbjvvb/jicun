@@ -101,8 +101,7 @@ void main() {
       final r = ParseResult.fromJson(
         (c['data'] as Map).cast<String, dynamic>(),
       );
-      final hasAnyCard =
-          r.hasVideo || r.hasImages || r.hasAudio || r.hasCopy;
+      final hasAnyCard = r.hasVideo || r.hasImages || r.hasAudio || r.hasCopy;
       expect(hasAnyCard, isTrue, reason: '$platform:一张卡都出不来');
     }
   });

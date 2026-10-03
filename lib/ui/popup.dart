@@ -19,8 +19,6 @@ import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/palette.dart';
 import 'package:jicun/widgets/animated_tab_icon.dart';
 
-
-
 /// 普通提示卡的面板最大宽度。
 ///
 /// 提成常量是因为它不只管布局:更新说明那个固定 12 行的窗口要按**面板实际能给的宽度**
@@ -159,25 +157,28 @@ const Duration kGlassDialogFade = Duration(milliseconds: 180);
 ///   面板还在淡入时后面已经黑透了。
 /// - 整个入场短一档,见 [kGlassDialogFade]。
 class GlassDialogRoute<T> extends RawDialogRoute<T> {
-  GlassDialogRoute({required WidgetBuilder builder, required Color barrierColor})
-    : super(
-        pageBuilder: (context, _, _) => builder(context),
-        barrierColor: barrierColor,
-        barrierDismissible: true,
-        // 点背景也是关掉的一条路,这句是读屏要念的
-        barrierLabel: '关闭',
-        transitionDuration: kGlassDialogFade,
-        transitionBuilder: (context, animation, _, child) => FadeTransition(
-          opacity: animation.drive(CurveTween(curve: Curves.easeOut)),
-          child: child,
-        ),
-      );
+  GlassDialogRoute({
+    required WidgetBuilder builder,
+    required Color barrierColor,
+  }) : super(
+         pageBuilder: (context, _, _) => builder(context),
+         barrierColor: barrierColor,
+         barrierDismissible: true,
+         // 点背景也是关掉的一条路,这句是读屏要念的
+         barrierLabel: '关闭',
+         transitionDuration: kGlassDialogFade,
+         transitionBuilder: (context, animation, _, child) => FadeTransition(
+           opacity: animation.drive(CurveTween(curve: Curves.easeOut)),
+           child: child,
+         ),
+       );
 
   /// 遮蔽在动画的前这么多(0~1)铺满,不跟着面板慢慢爬。
   static const double barrierLead = 0.4;
 
   @override
-  Curve get barrierCurve => const Interval(0, barrierLead, curve: Curves.easeOut);
+  Curve get barrierCurve =>
+      const Interval(0, barrierLead, curve: Curves.easeOut);
 }
 
 /// 开一块玻璃弹层。全 App 的弹层都走这一条 —— 骨架是 [PopupShell],路由见
@@ -206,9 +207,14 @@ Future<T?> showGlassLayer<T>(
 /// 颜色不取 ColorScheme:弹层挂在 CupertinoApp 那棵树下面,拿不到二级页的种子色,
 /// 每个弹窗各写一遍 styleFrom 又必然走样 —— 所以整条配色只留这一份。
 class PopupPrimaryButton extends StatelessWidget {
-  const PopupPrimaryButton({super.key, required this.label, required this.onPressed});
+  const PopupPrimaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
+
   /// 传 null 就是禁用态(FilledButton 自己会画成灰的,点不动)。下载卡在「取消已经
   /// 下发、还没收尾」的那几秒用它,免得留一颗看着能按、按下去没反应的死按钮。
   final VoidCallback? onPressed;
@@ -234,7 +240,11 @@ class PopupPrimaryButton extends StatelessWidget {
 
 /// 弹层里的次按钮(忽略 / 稍后)。和主按钮并排时放右边。
 class PopupSecondaryButton extends StatelessWidget {
-  const PopupSecondaryButton({super.key, required this.label, required this.onPressed});
+  const PopupSecondaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
   final VoidCallback onPressed;
@@ -281,12 +291,7 @@ Future<bool> showGlassDialog(
 }
 
 /// 统一的轻提示。内容是 [AppGlassDialog],弹层的路由与遮罩见 [GlassDialogRoute]。
-void showInfo(
-  BuildContext context,
-  String title,
-  String body, {
-  String? icon,
-}) {
+void showInfo(BuildContext context, String title, String body, {String? icon}) {
   unawaited(showGlassDialog(context, title: title, body: body, icon: icon));
 }
 
