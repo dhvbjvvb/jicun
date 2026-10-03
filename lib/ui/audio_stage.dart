@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
+import 'package:jicun/failure.dart';
 import 'package:jicun/ui/palette.dart';
 import 'package:jicun/ui/playback.dart';
 import 'package:jicun/ui/player_ui.dart';
@@ -279,7 +280,9 @@ Future<File?> fetchAudioPreviewFile(String url) async {
     // 测试环境里 path_provider 没有实现;拿不到缓存目录就当这次兜底不可用。
     return null;
   }
-  final file = File('${dir.path}/${previewAudioCacheKey(url)}.${_audioExtOf(url)}');
+  final file = File(
+    '${dir.path}/${previewAudioCacheKey(url)}.${_audioExtOf(url)}',
+  );
   // 已经抓过一次就复用(大小对不上当没抓到)。
   if (await file.exists() && await file.length() > 0) return file;
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
@@ -306,8 +309,9 @@ Future<File?> fetchAudioPreviewFile(String url) async {
         }
         await part.rename(file.path);
         return file;
-      } catch (_) {
+      } catch (error, stack) {
         // 这一趟不行就再来一趟;三次都不行交给调用方报错。
+        swallow('audio.fetch', error, stack);
       }
     }
   } finally {

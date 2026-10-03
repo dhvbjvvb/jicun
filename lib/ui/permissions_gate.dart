@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../failure.dart';
 import 'notifications.dart';
 import 'prefs.dart';
 
@@ -47,8 +48,9 @@ class PermissionsGate {
     try {
       final store = prefs ?? await SharedPreferences.getInstance();
       asked = store.getBool(kPrefsPermissionsAsked) ?? false;
-    } catch (_) {
+    } catch (error, stack) {
       // 读不到就当没问过:这次会再问一遍,最多重复一次
+      swallow('perm.read', error, stack);
     }
   }
 
@@ -72,6 +74,8 @@ class PermissionsGate {
     try {
       final store = prefs ?? await SharedPreferences.getInstance();
       await store.setBool(kPrefsPermissionsAsked, true);
-    } catch (_) {}
+    } catch (error, stack) {
+      swallow('perm.remember', error, stack);
+    }
   }
 }

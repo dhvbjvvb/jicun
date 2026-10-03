@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'failure.dart';
+
 /// 封面图的本地缓存。
 ///
 /// **为什么必须落盘**:只放内存的话,App 一重启缓存就没了,进历史页要重新联网
@@ -47,8 +49,9 @@ class CoverCache {
   static Future<void> warmUp() async {
     try {
       await _ensureDir();
-    } catch (_) {
+    } catch (error, stack) {
       // 拿不到目录(平台不支持、测试环境)就当没有缓存,全走网络。
+      swallow('cover.warmup', error, stack);
     }
   }
 
@@ -71,8 +74,9 @@ class CoverCache {
       final dir = await _ensureDir();
       await File('${dir.path}/${keyOf(url)}').writeAsBytes(response.bodyBytes);
       await _trim(dir);
-    } catch (_) {
+    } catch (error, stack) {
       // 地址过期、没网、写盘失败 —— 都不该影响任何事,下次再试。
+      swallow('cover.fetch', error, stack);
     }
   }
 
@@ -106,8 +110,9 @@ class CoverCache {
       for (var i = 0; i < files.length - _maxFiles; i++) {
         files[i].deleteSync();
       }
-    } catch (_) {
+    } catch (error, stack) {
       // 清理失败无所谓,下次写盘再试。
+      swallow('cover.trim', error, stack);
     }
   }
 }

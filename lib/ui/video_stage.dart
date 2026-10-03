@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:jicun/failure.dart';
 import 'package:jicun/ui/palette.dart';
 import 'package:jicun/ui/playback.dart';
 import 'package:jicun/ui/player_ui.dart';
@@ -17,7 +18,12 @@ import 'package:video_player/video_player.dart';
 ///
 /// 左右滑动画面可以调进度,和下面进度条走同一套 seek 逻辑。
 class VideoStage extends StatefulWidget {
-  const VideoStage({super.key, required this.isDark, required this.url, this.coverUrl});
+  const VideoStage({
+    super.key,
+    required this.isDark,
+    required this.url,
+    this.coverUrl,
+  });
 
   final bool isDark;
   final String url;
@@ -199,8 +205,9 @@ class VideoStageState extends State<VideoStage> {
     _seeking = true;
     try {
       await controller.seekTo(target);
-    } catch (_) {
+    } catch (error, stack) {
       // 播放器已随页面销毁时会抛,忽略。
+      swallow('video.seek', error, stack);
     } finally {
       _seeking = false;
     }

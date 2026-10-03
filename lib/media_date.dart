@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'failure.dart';
+
 /// 把下载文件里的「拍摄 / 创建时间」改成下载时间。
 ///
 /// 相册、文件管理显示和排序用的日期来自文件里的元数据,不是下载时间:
@@ -22,7 +24,10 @@ Future<void> stampDownloadDate(File file, {DateTime? now}) async {
   final when = now ?? DateTime.now();
   try {
     await file.setLastModified(when);
-  } catch (_) {}
+  } catch (error, stack) {
+    // mtime 失败不挡下面:能改二进制里的时间就改,改不了只损失相册排序。
+    swallow('date.mtime', error, stack);
+  }
   try {
     final lower = file.path.toLowerCase();
     if (lower.endsWith('.mp4') ||
@@ -38,8 +43,9 @@ Future<void> stampDownloadDate(File file, {DateTime? now}) async {
         await file.writeAsBytes(bytes, flush: false);
       }
     }
-  } catch (_) {
+  } catch (error, stack) {
     // 改不动就算了:文件已经是完整的,只是日期可能还是源文件的。
+    swallow('date.stamp', error, stack);
   }
 }
 
@@ -138,7 +144,9 @@ Future<bool> _patchTime(RandomAccessFile raf, int body, int seconds) async {
     _putU64(buf, 0, seconds);
     _putU64(buf, 8, seconds);
   } else if (version == 0) {
-    final value = seconds > 0xFFFFFFFF ? 0xFFFFFFFF : (seconds < 0 ? 0 : seconds);
+    final value = seconds > 0xFFFFFFFF
+        ? 0xFFFFFFFF
+        : (seconds < 0 ? 0 : seconds);
     buf = Uint8List(8);
     _putU32(buf, 0, value);
     _putU32(buf, 4, value);
@@ -161,7 +169,9 @@ bool _stampJpegExif(List<int> bytes, DateTime when) {
   while (p + 4 <= bytes.length) {
     if (bytes[p] != 0xFF) break;
     final marker = bytes[p + 1];
-    if (marker == 0xD8 || (marker >= 0xD0 && marker <= 0xD7) || marker == 0x01) {
+    if (marker == 0xD8 ||
+        (marker >= 0xD0 && marker <= 0xD7) ||
+        marker == 0x01) {
       p += 2;
       continue;
     }
@@ -223,6 +233,7 @@ bool _patchExif(List<int> bytes, int tiff, DateTime when) {
     }
     if (exifIfd != null) walk(exifIfd, depth + 1);
   }
+
   walk(_u32(bytes, tiff + 4, little), 0);
   return changed;
 }
@@ -242,9 +253,8 @@ Uint8List _exifDateBytes(DateTime when) {
 
 // ────────────────────────────── 小工具 ──────────────────────────────
 
-int _u16(List<int> b, int at, bool little) => little
-    ? (b[at] | (b[at + 1] << 8))
-    : ((b[at] << 8) | b[at + 1]);
+int _u16(List<int> b, int at, bool little) =>
+    little ? (b[at] | (b[at + 1] << 8)) : ((b[at] << 8) | b[at + 1]);
 
 int _u32(List<int> b, int at, bool little) => little
     ? (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24))

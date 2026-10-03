@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'audio_tags.dart';
 import 'download_logic.dart';
+import 'failure.dart';
 import 'media_date.dart';
 
 /// 下载内容的类型。决定文件落到哪个公共媒体目录。
@@ -173,10 +174,7 @@ class Downloader {
     final uri = res['uri'] as String?;
     if (uri == null || uri.isEmpty) return null;
     final label = (res['label'] as String?)?.trim() ?? '';
-    return StorageTarget(
-      treeUri: uri,
-      label: label.isEmpty ? uri : label,
-    );
+    return StorageTarget(treeUri: uri, label: label.isEmpty ? uri : label);
   }
 
   /// 同时下载的文件数。单个大文件内部的 Range 并发由 [maxSegments] 控制。
@@ -513,8 +511,9 @@ class Downloader {
         for (final uri in publishedUris) {
           try {
             await unpublishImpl(uri);
-          } catch (_) {
+          } catch (error, stack) {
             // 撤不回来(个别 ROM 拒删)也不能挡住下面的清理和异常上报
+            swallow('dl.unpublish-rollback', error, stack);
           }
         }
       }
@@ -570,6 +569,7 @@ class Downloader {
     final bytes = List<int>.filled(items.length, 0);
     final sizes = List<int>.filled(items.length, 0);
     var finished = 0;
+
     /// 已经进相册的字节合计(和原生那条路同一个口径,见 [report])。
     var publishedBytes = 0;
 
@@ -631,7 +631,8 @@ class Downloader {
     // 4 个 100MB 的视频各开满 32 条就是 128 条,那是拿去撞 CDN 并发上限的。
     _batchItems = items.length;
     final lanesEach = math.max(1, lanesPerItem(maxSegments, items.length));
-    client.maxConnectionsPerHost = math.min(concurrency, items.length) * lanesEach;
+    client.maxConnectionsPerHost =
+        math.min(concurrency, items.length) * lanesEach;
     var next = 0;
     try {
       Future<void> worker() async {
@@ -819,12 +820,14 @@ class Downloader {
         try {
           entry.deleteSync();
           removed++;
-        } catch (_) {
+        } catch (error, stack) {
           // 删不掉(被占用)就留着,下次启动再试
+          swallow('dl.sweep-part', error, stack);
         }
       }
-    } catch (_) {
+    } catch (error, stack) {
       // 目录读不动:不值得让启动失败
+      swallow('dl.sweep-dir', error, stack);
     }
     if (removed > 0 && kDebugMode) {
       debugPrint('[dl] 清掉 $removed 个上次遗留的分片');
@@ -1075,12 +1078,16 @@ class Downloader {
           if (from > chunk.end) break; // 这一段满了
           if (cancelled?.call() ?? false) throw const DownloadCancelled();
           final request = await http.getUrl(Uri.parse(item.url));
-          request.headers.set(HttpHeaders.rangeHeader, 'bytes=$from-${chunk.end}');
+          request.headers.set(
+            HttpHeaders.rangeHeader,
+            'bytes=$from-${chunk.end}',
+          );
           final response = await request.close();
           // 服务端可以忽略 Range 回 200 + 整条(RFC 7233),那种响应按偏移写会写坏 ——
           // 除非**区间本来就等于整条**(起点 0、长度也对得上),那时 200 的内容正是要的
           // 那一段(实测微信视频号就是回 200 而不是 206)。判据在规格里。
-          final usable = response.statusCode == 206 ||
+          final usable =
+              response.statusCode == 206 ||
               wholeFileAsRange(
                 response.statusCode,
                 from,
@@ -1250,7 +1257,8 @@ class Downloader {
       ext = probeExt;
     } else if (_kindOfExt(sniffed) == item.kind) {
       ext = sniffed;
-    } else if (item.kind == MediaKind.audio && _kIsoBmffExts.contains(sniffed)) {
+    } else if (item.kind == MediaKind.audio &&
+        _kIsoBmffExts.contains(sniffed)) {
       ext = '.m4a';
     } else {
       ext = probeExt;

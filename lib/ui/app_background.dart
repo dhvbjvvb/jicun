@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../failure.dart';
+
 /// 自定义背景图的原生入口。
 ///
 /// 选图借用下载器那条通道(见 MainActivity 的 pickBackgroundImage):原生侧拉起
@@ -27,6 +29,8 @@ class AppBackground {
     try {
       final file = File(path);
       if (file.existsSync()) file.deleteSync();
-    } catch (_) {}
+    } catch (error, stack) {
+      swallow('bg.remove-file', error, stack);
+    }
   }
 }

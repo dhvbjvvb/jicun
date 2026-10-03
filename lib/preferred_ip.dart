@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import 'api_host.dart';
+import 'failure.dart';
 
 /// Cloudflare 优选 IP 池。
 ///
@@ -307,7 +308,10 @@ class PreferredIpConnector {
       // 底层 raw socket 摘走,那时候 destroy() 会抛,所以这里再兜一层。
       try {
         socket.destroy();
-      } catch (_) {}
+      } catch (error, stack) {
+        // 连销毁都失败:没关系,这个 socket 已经废了,只是多占一会儿 FD。
+        swallow('ip.socket-destroy', error, stack);
+      }
       rethrow;
     }
   }
@@ -466,8 +470,9 @@ class PreferredIpUpdater {
         _lastHost = host;
         _apply(config, answeredBy: host);
         return config;
-      } catch (_) {
+      } catch (error, stack) {
         // 这个域名不通,换下一个。
+        swallow('ip.probe', error, stack);
       }
     }
     return const ServerConfig();
@@ -517,6 +522,9 @@ class PreferredIpUpdater {
           )
           .timeout(_timeout)
           .ignore();
-    } catch (_) {}
+    } catch (error, stack) {
+      // 一条诊断样本,发不出去就算了 —— 上报失败不该影响用户任何体验。
+      swallow('ip.report', error, stack);
+    }
   }
 }

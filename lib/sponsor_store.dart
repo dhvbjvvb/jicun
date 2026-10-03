@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_host.dart';
+import 'failure.dart';
 import 'preferred_ip.dart';
 import 'ui/prefs.dart';
 
@@ -189,8 +190,9 @@ class SponsorStore extends ChangeNotifier {
       _list = parsed;
       notifyListeners();
       await _save(body);
-    } catch (_) {
+    } catch (error, stack) {
       // 网络问题不是错误路径,继续用手里那份。
+      swallow('sponsor.refresh', error, stack);
     } finally {
       _inFlight = false;
     }
@@ -226,8 +228,9 @@ class SponsorStore extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(kPrefsSponsors, body);
-    } catch (_) {
+    } catch (error, stack) {
       // 存不下就算了,下次冷启动退回兜底,不影响这次显示。
+      swallow('sponsor.save', error, stack);
     }
   }
 }
@@ -256,17 +259,18 @@ void sponsorSelfCheck() {
     '没昵称的条目应跳过',
   );
   assert(
-    parseSponsors(
-      '{"sponsors":[{"name":"a\nb","date":"x","amount":"y"}]}',
-    ).single.$1 ==
+    parseSponsors('{"sponsors":[{"name":"a\nb","date":"x","amount":"y"}]}')
+            .single
+            .$1 ==
         'ab',
     '昵称里的换行应剥掉',
   );
   final String longName = List<String>.filled(100, 'x').join();
   assert(
-    parseSponsors(
-      '{"sponsors":[{"name":"$longName","date":"y","amount":"z"}]}',
-    ).single.$1.length ==
+    parseSponsors('{"sponsors":[{"name":"$longName","date":"y","amount":"z"}]}')
+            .single
+            .$1
+            .length ==
         kMaxSponsorName,
     '超长昵称应截断',
   );

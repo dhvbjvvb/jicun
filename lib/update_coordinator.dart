@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'failure.dart';
 import '../ui/download_progress_card.dart';
 import '../ui/popup.dart';
 import '../ui/prefs.dart';
@@ -84,8 +85,9 @@ class UpdateCoordinator {
       final store = prefs ?? await SharedPreferences.getInstance();
       final ignored = store.getString(kPrefsIgnoredVersion);
       if (ignored != null && ignored.isNotEmpty) _ignoredVersion = ignored;
-    } catch (_) {
+    } catch (error, stack) {
       // 读不到就当没忽略过
+      swallow('update.read-ignored', error, stack);
     }
   }
 
@@ -95,7 +97,9 @@ class UpdateCoordinator {
     try {
       final store = prefs ?? await SharedPreferences.getInstance();
       await store.setString(kPrefsIgnoredVersion, version);
-    } catch (_) {}
+    } catch (error, stack) {
+      swallow('update.remember-ignored', error, stack);
+    }
   }
 
   /// 检查一次有没有新版本。
@@ -166,7 +170,9 @@ class UpdateCoordinator {
     try {
       final info = await PackageInfo.fromPlatform();
       localVersion = info.version;
-    } catch (_) {}
+    } catch (error, stack) {
+      swallow('update.local-version', error, stack);
+    }
   }
 
   /// 弹「版本更新」卡片。用户选完(更新/忽略)才返回。

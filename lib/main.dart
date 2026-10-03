@@ -12,6 +12,7 @@ import 'bench.dart';
 import 'bootstrap.dart';
 import 'cover_cache.dart';
 import 'downloader.dart';
+import 'failure.dart';
 import 'history_store.dart';
 import 'parse_service.dart';
 import 'shell_controller.dart';
@@ -31,7 +32,6 @@ import 'pages/history.dart';
 import 'pages/settings.dart';
 import 'ui/glass.dart';
 import 'ui/theme_appearance_page.dart';
-
 
 // 启动画面**只在原生侧**(浅深各一个启动入口,见 AndroidManifest 里的
 // LaunchLightActivity/LaunchDarkActivity 与 res/drawable/launch_{light,dark}.xml、
@@ -276,7 +276,9 @@ class HomeShellState extends State<LiquidGlassDemo>
       try {
         final entries = await _history.add(result, url);
         if (mounted) setState(() => historyEntries = entries);
-      } catch (_) {}
+      } catch (error, stack) {
+        swallow('history.add', error, stack);
+      }
 
       // 顺手把封面拉进图片缓存。解析完这张图只出现在解析页,历史页要等用户切过去
       // 才第一次发起请求 —— 那时候必然先灰一下。这里提前预热,切过去就是现成的。
@@ -284,7 +286,9 @@ class HomeShellState extends State<LiquidGlassDemo>
       if (cover != null && mounted) {
         // 内存缓存:本次运行内立刻可用
         // 传 onError 是必须的:不传的话图片加载失败会变成未处理的 FlutterError。
-        unawaited(precacheImage(NetworkImage(cover), context, onError: (_, _) {}));
+        unawaited(
+          precacheImage(NetworkImage(cover), context, onError: (_, _) {}),
+        );
         // 磁盘缓存:下次冷启动进历史页就不用再等网络了
         unawaited(CoverCache.store(cover));
       }
@@ -372,7 +376,9 @@ class HomeShellState extends State<LiquidGlassDemo>
         body: ok ? '《$title》已保存到本地。' : '《$title》:${error ?? '下载没能完成'}',
         notificationDetails: kNotificationDetails,
       );
-    } catch (_) {}
+    } catch (error, stack) {
+      swallow('notify.show', error, stack);
+    }
   }
 
   /// 历史页删记录。数据在根 State 上,所以得由这里落盘并刷新。
@@ -577,7 +583,8 @@ class HomeShellState extends State<LiquidGlassDemo>
   /// 检查一次有没有新版本。实现搬去了 [UpdateCoordinator.check];这里只做转发,
   /// 因为板块页是通过 ShellController 拿这个入口的。
   @override
-  Future<void> checkForUpdate({bool manual = false}) => _update.check(manual: manual);
+  Future<void> checkForUpdate({bool manual = false}) =>
+      _update.check(manual: manual);
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
