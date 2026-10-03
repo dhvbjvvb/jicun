@@ -205,6 +205,15 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// `VideoStage.didUpdateWidget` 换掉的播放器 —— 正是要验的那条路。
   Completer<void>? holdNextCreate;
 
+  /// 让**下一次** seek 卡在这个 future 上(制造"上一次还没回来")。
+  Completer<void>? holdNextSeek;
+
+  /// 收到过的 seek 目标。
+  ///
+  /// 假播放器不会真的跳转,画面也不会动 —— 「拖画面调进度」这条路上唯一能拿来
+  /// 断言的,就是这条指令有没有送到播放器、送到的是多少。
+  final List<Duration> seeks = <Duration>[];
+
   /// 现在有播放器在播吗。
   bool get playing => _playing.isNotEmpty;
 
@@ -252,7 +261,12 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> pause(int playerId) async => _playing.remove(playerId);
 
   @override
-  Future<void> seekTo(int playerId, Duration position) async {}
+  Future<void> seekTo(int playerId, Duration position) async {
+    seeks.add(position);
+    final gate = holdNextSeek;
+    holdNextSeek = null;
+    if (gate != null) await gate.future;
+  }
 
   @override
   Future<void> setLooping(int playerId, bool looping) async {}
