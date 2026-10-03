@@ -13,7 +13,7 @@ import 'downloader.dart';
 /// 它回答的是一个排障问题:真机上聚合速度只有 PC 的一半时,卡的是
 /// 「这台设备 + 这条链路」还是「我们的下载实现(分片落盘、进度回调、UI)」。
 ///   - 这里也是 27 MB/s  → 设备/链路额度,和实现无关;
-///   - 这里能到 43+       → 实现在拖,接着往 `Downloader._fetchSegments` 里查。
+///   - 这里能到 43+       → 实现在拖,接着往 `_fetchSegments` 里查。
 ///
 /// 怎么触发(debug 构建):
 ///   adb shell am start -n com.videofix.jicun/.MainActivity \
