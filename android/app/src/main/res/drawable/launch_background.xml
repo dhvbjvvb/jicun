@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 无版本限定符的那份:默认(浅色)启动窗口。
+
+     这份其实**跑不到** —— 本 APP 的 minSdk 是 24,所有设备都命中的是
+     drawable-v21(浅色)和 drawable-night(深色)那两份。留着它只是因为模板要求
+     默认资源可解析。
+
+     内容仍然和那两份保持一致(底色 + 居中启动图):不然进 res/ 一看,会以为
+     "浅色那份没有启动图"。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_background_color" />
+    <item
+        android:width="288dp"
+        android:height="288dp"
+        android:drawable="@drawable/splash_logo"
+        android:gravity="center" />
+</layer-list>

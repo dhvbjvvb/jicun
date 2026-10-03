@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          # 缓存 ~/.gradle(依赖 + wrapper 发行包,后者一个就有 200MB)。
+          # 依赖文件按 **/gradle-wrapper.properties 认,这个文件是进库的。
+          # 首跑仍然要下全套,之后那步 apk 构建能从几分钟掉到几十秒。
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # lib/secrets.dart is gitignored, and the app does not compile without it.
+      # The template is enough here: the tests stub the network, and no real key is needed.
+      - run: cp lib/secrets.example.dart lib/secrets.dart
+
+      - run: flutter pub get
+      - run: flutter analyze
+
+      # 下载器的纯逻辑测试向量是生成物(tool/download_logic_vectors.json)。
+      # 这里不 --write,只校验它和实现一致 —— 改了那几个函数忘了重新生成,CI 直接红。
+      - run: python3 tool/gen_logic_vectors.py
+
+      # 注释里点名的函数改名/删了,只有这个脚本会红 —— 测试与 analyzer 都不会。
+      # 判据刻意保守:只认像代码标识符的反引号词,外部名记在脚本的 FOREIGN 表里。
+      - run: python3 tool/check_comment_refs.py
+
+      # **逐文件跑 + 失败重试一次**。原因见 README「为什么要逐文件跑」:Windows 上的
+      # flutter_tester 有一条引擎级缺陷(ShaderMask + 滚动,0xc0000005),会静默杀掉
+      # 整个测试进程、一次带走同一文件剩下的几十条用例。崩的是 Windows 版 tester,
+      # CI 跑 Linux 理论上不受影响 —— 但**本机与 CI 用同一套跑法**才不会出现"本地红、
+      # CI 绿"这种没法归因的情况;逐文件还顺带把爆炸半径限制在一个文件里。
+      # 改测试或跑验证时,本机用等价的 .\tool\run_tests.ps1。
+      - name: flutter test(逐文件,失败重试一次)
+        run: |
+          set -uo pipefail
+          fail=0
+          for f in $(ls test/*_test.dart | sort); do
+            if flutter test "$f" --concurrency=2; then
+              continue
+            fi
+            echo "::warning file=$f::第一次失败,重试一次"
+            if ! flutter test "$f" --concurrency=2; then
+              echo "::error file=$f::$f 两次都失败"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      # gradlew / gradle-wrapper.jar / local.properties 都不进版本库(Flutter 模板的
+      # android/.gitignore 忽略了它们),干净检出里一个都没有 —— 直接跑 ./gradlew 会
+      # 报 "No such file or directory"。先让它跑一次 Android 构建,把这些补齐,
+      # 顺带把 Kotlin 编译这道门也过了。
+      - run: flutter build apk --debug
+
+      # Native side: pure-function tests over DownloadNames / LaunchActivities / NativeDownloader.
+      - run: ./gradlew :app:testDebugUnitTest
+        working-directory: android

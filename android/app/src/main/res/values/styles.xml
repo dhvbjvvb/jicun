@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 两个**启动入口**的主题:一个主题一档,各自写死不跟 night 走。
+
+         用户点图标启动时,launcher 取的是「启用着的那个带 MAIN/LAUNCHER 的组件」,
+         启动窗口就用那个组件的主题画 —— 所以起点只要组件选对了,启动图就一定跟
+         app 里选的那一档一致,和系统的深浅没关系。哪个组件启用由
+         MainActivity.syncLaunchEntry 按落盘那档切(见 LaunchActivities.kt)。
+
+         为什么非这么干:启动窗口在 Activity 起来之前由系统画,它只看被启动组件的
+         主题;主题里要是用 night 限定符,取的就是**系统**那一档 —— 用户在 app 里
+         手动换档时系统没变,启动图就还是旧的(真机实测,只有部分 ROM 上
+         UiModeManager.setApplicationNightMode 能把它拽回来,vivo 上拽不回来)。
+
+         API 31+ 的系统启动图不吃 windowBackground,它只吃 windowSplashScreenBackground
+         / windowSplashScreenAnimatedIcon 那两条 —— 在 values-v31/styles.xml 里
+         (限定符目录里的同名 style 替换掉这份,条目不会合并,所以那边 windowBackground
+         又写了一遍)。 -->
+    <style name="LaunchThemeLight" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_light</item>
+    </style>
+    <style name="LaunchThemeDark" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_dark</item>
+    </style>
+
+    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <!-- Show a splash screen on the activity. Automatically removed when
+             the Flutter engine draws its first frame -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+    <!-- Theme applied to the Android Window as soon as the process has started.
+         This theme determines the color of the Android Window while your
+         Flutter UI initializes, as well as behind your Flutter UI while its
+         running.
+
+         This Theme is only used starting with V2 of Flutter's Android embedding. -->
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <!-- Same drawable as LaunchTheme: the window behind the Flutter view
+             must show the same background, or a seam appears while the engine
+             attaches and before the first frame lands. -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+</resources>

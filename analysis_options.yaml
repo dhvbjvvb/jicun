@@ -1,0 +1,50 @@
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+#
+# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
+# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
+# invoked from the command line by running `flutter analyze`.
+
+# The following line activates a set of recommended lints for Flutter apps,
+# packages, and plugins designed to encourage good coding practices.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - windows/**
+
+linter:
+  # The lint rules applied to this project can be customized in the
+  # section below to disable rules from the `package:flutter_lints/flutter.yaml`
+  # included above or to enable additional rules. A list of all available lints
+  # and their documentation is published at https://dart.dev/lints.
+  #
+  # Instead of disabling a lint rule for the entire project in the
+  # section below, it can also be suppressed for a single line of code
+  # or a specific dart file by using the `// ignore: name_of_lint` and
+  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
+  # producing the lint.
+  rules:
+    # 这里只加"改起来不伤观感、又能挡住整类错误"的规则。analyzer 当前是 0 issue,
+    # 加规则的成本此刻最低 —— 以后每加一条都要一次全库改动。
+    #
+    # async 之后再碰 context 是真实的崩法(mounted 检查漏了),不是风格问题。
+    use_build_context_synchronously: true
+    # 生产代码不该往 stdout 打东西:Android 上 print 会进 logcat,Windows 上直接
+    # 进控制台。排障用 debugPrint(见 lib/audio_tags.dart 那处)。
+    avoid_print: true
+    # 少一层闭包,栈更短、分配更少。
+    unnecessary_lambdas: true
+    # 能 const 的 widget 不重建。
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    # 默认参数和入参不该被重新赋值。
+    avoid_redundant_argument_values: false
+    # 忘了 await 的 Future 是真实缺陷(写盘、上报、清理),不是风格问题:没人处理的
+    # 异步错误会被静默吞掉。加这条时把库里所有未 await 的点都过了一遍。
+    unawaited_futures: true
+
+# Additional information about this file can be found at
+# https://dart.dev/guides/language/analysis-options
