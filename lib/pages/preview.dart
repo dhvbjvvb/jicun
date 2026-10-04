@@ -534,23 +534,11 @@ class PreviewCardState extends State<PreviewCard> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Expanded(
-                          child: CardActionButton(
-                            isDark: isDark,
-                            label: widget.kind.action,
-                            icon: widget.kind.actionIcon,
-                            onPressed: _canAct ? _runAction : null,
-                          ),
-                        ),
+                        Expanded(child: _downloadButton(isDark)),
                       ],
                     )
                   else
-                    CardActionButton(
-                      isDark: isDark,
-                      label: widget.kind.action,
-                      icon: widget.kind.actionIcon,
-                      onPressed: _canAct ? _runAction : null,
-                    ),
+                    _downloadButton(isDark),
                 ],
               ),
             ),
@@ -559,6 +547,15 @@ class PreviewCardState extends State<PreviewCard> {
       ),
     );
   }
+
+  /// 下载那颗按钮。带「全选媒体」和只带下载两条分支用的是同一颗,参数一样,
+  /// 只写一遍。
+  Widget _downloadButton(bool isDark) => CardActionButton(
+    isDark: isDark,
+    label: widget.kind.action,
+    icon: widget.kind.actionIcon,
+    onPressed: _canAct ? _runAction : null,
+  );
 }
 
 /// 预览区。解析前是占位骨架:高度按各自内容定死,解析出结果后原地替换内容即可,
