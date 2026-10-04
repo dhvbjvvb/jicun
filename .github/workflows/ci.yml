@@ -110,3 +110,49 @@ jobs:
       # / NativeDownloader.
       - run: ./gradlew :app:testDebugUnitTest
         working-directory: android
+
+  # 覆盖率:**只做参考,不作门**。
+  #
+  # 为什么不做门:这个数字两个方向都证不了 —— Widget 渲染天然难覆盖,而堆行数只要多
+  # 写几条不痛不痒的用例就行。它的用处是回答“哪些分支没人走过”,那是给人看的问题,
+  # 不是给 CI 判的问题。所以整个 job 是 continue-on-error:红了不拦合并,结论写进
+  # job summary,lcov 留成产物。
+  #
+  # 跑法上唯一要注意的:覆盖率得**一次跑完**才有全局数字,所以这里没用 test job 那套
+  # 逐文件逻辑。代价是整套再跑一遍 —— 这也是它单开一个 job 的原因:不拖慢测试那条主线。
+  coverage:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: cp lib/secrets.example.dart lib/secrets.dart
+      - run: flutter pub get
+
+      - name: flutter test --coverage(整套一次)
+        run: flutter test --coverage
+        continue-on-error: true
+
+      # 跑挂了也要把话说清楚:没有 lcov 是“没数”,不是“0% 覆盖”。
+      - name: 覆盖率摘要(参考用,不作门)
+        if: always()
+        run: |
+          lcov=coverage/lcov.info
+          summary="$GITHUB_STEP_SUMMARY"
+          if [ ! -f "$lcov" ]; then
+            echo "这轮没产出 lcov,没有摘要。" >> "$summary"
+            exit 0
+          fi
+          python3 tool/coverage_summary.py "$lcov" | tee -a "$summary"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+          retention-days: 7
