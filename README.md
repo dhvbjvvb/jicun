@@ -211,16 +211,20 @@ cd android && ./gradlew :app:testDebugUnitTest    # Kotlin：下载器纯逻辑�
 python tool/gen_logic_vectors.py     # 校验跨端测试向量与实现一致
 python tool/check_comment_refs.py    # 注释里点名的标识符必须还在
 flutter test integration_test        # 需要真机或模拟器
+flutter test --coverage              # 整套一次跑完，产出 coverage/lcov.info
+python tool/coverage_summary.py      # 覆盖率摘要（只给人看；CI 里有，不作门）
 ```
 
 **为什么要逐文件跑、崩溃才重试一次**：Windows 上的 `flutter_tester` 有一条引擎级缺陷 —— `ShaderMask` + 滚动列表在软件渲染下会以 `0xc0000005` 静默杀掉整个测试进程，一次带走同一文件里剩下的几十条用例。触发是概率性的（约 0.1%/用例），和具体用例无关。逐文件跑把爆炸半径限制在一个文件里；**崩溃那次重试一次**把那点概率抹掉，本机与 CI 用同一套跑法，才不会出现「本地红、CI 绿」这种没法归因的情况。
 
 而**断言/异常失败一律不重试** —— 重试会把「偶尔挂一次」的真 bug 抹成绿色。判据是「看有没有失败标记」，不是「看有没有 `did not complete`」：后者只是崩溃的一种形态（实测崩得最干脆那次只剩一行 `loading …`），而加载期就被杀时 flutter 报的是 `Failed to load "…": Connection closed before test suite loaded.`，它同时带 `Failed to load` 和 `[E]`，先查标记就会把这条 flake 判成真失败。改过判据跑一下自检：`.\tool\run_tests.ps1 -SelfCheck`（14 条形状，含上面这些真实原文）。
 
+**覆盖率只做参考，不作门**：Widget 渲染代码天然难覆盖，而堆行数只要多写几条不痛不痒的用例就行 —— 这个数字两个方向都证不了什么。它的用处是回答“哪些分支没人走过”，那是给人看的问题，不是给 CI 判的问题。所以 CI 里那个 job 是 `continue-on-error`，结论写进 job summary，红了不拦合并。
+
 ### 项目结构
 
 ```
-lib/                   56 个 Dart 文件
+lib/                   60 个 Dart 文件
   main.dart            入口与根壳
   bootstrap.dart       启动编排：首帧前要办的事，与之后的后台活
   pages/               四个板块页：parse / history / preview / settings
@@ -234,7 +238,7 @@ lib/                   56 个 Dart 文件
   preferred_ip.dart    多候选连接竞速与备用线路
   sponsor_store.dart   赞助名单：本地缓存 + 联网刷新，拿不到就用内置那份
 android/               原生侧（Kotlin）：通道转发、媒体库登记、装包、后台选择器、剪贴板、下载保活
-tool/                  生成 / 转换脚本，run_tests.ps1 逐文件跑测试
+tool/                  生成 / 转换脚本与覆盖率摘要，run_tests.ps1 逐文件跑测试
 test/                  Dart 用例：单元测试与 widget 测试
 integration_test/      真机基准测试（下载测速）
 ```
@@ -258,6 +262,14 @@ integration_test/      真机基准测试（下载测速）
 | `tool/gen_logic_vectors.py` | 生成 / 校验；`--write` 重新生成 |
 
 两边都在读它：`test/download_logic_vectors_test.dart` 与 `android/app/src/test/kotlin/.../DownloadLogicVectorsTest.kt`。改了实现就重跑 `python tool/gen_logic_vectors.py --write`，CI 会校验生成物和实现一致。
+
+### 格式化提交与 git blame
+
+仓库根目录的 `.git-blame-ignore-revs` 列着全仓库对齐 `dart format` 的那次提交 —— 不列的话，它重排过的 488 行全算在它头上（lib + test 实测），想问“这行为什么这么写”往往只看到一句 `dart format`。
+
+谁读这个文件：**GitHub 的 blame 页面自动读**（仓库根目录认这个文件名）；**本地 git 不自动读**，要么每次带上 `git blame --ignore-revs-file=.git-blame-ignore-revs`，要么在本仓库里配一次 `git config blame.ignoreRevsFile .git-blame-ignore-revs`。
+
+加条目前先问一句：这个提交是**只动空白、动了每一行**吗？顺手带了格式改动的不算 —— 那样会连它真正的内容改动一起跳过。清单只增不改：一旦有提交引用了这里的 hash，历史就不该再被改写。
 
 ## 隐私
 
