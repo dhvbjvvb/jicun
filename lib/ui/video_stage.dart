@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:jicun/failure.dart';
+import 'package:jicun/ui/geometry.dart';
 import 'package:jicun/ui/palette.dart';
 import 'package:jicun/ui/playback.dart';
 import 'package:jicun/ui/player_ui.dart';
@@ -344,7 +345,7 @@ class VideoStageState extends State<VideoStage> {
 
   /// 16:9 的画面框,圆角与底色和另外几块预览区一致。
   Widget _frame(Widget child) => ClipRRect(
-    borderRadius: BorderRadius.circular(14),
+    borderRadius: BorderRadius.circular(kStageRadius),
     child: AspectRatio(
       aspectRatio: 16 / 9,
       child: ColoredBox(color: const Color(0xFF000000), child: child),

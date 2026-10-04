@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:jicun/parse_service.dart';
+import 'package:jicun/ui/geometry.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
 import 'package:jicun/ui/palette.dart';
@@ -87,7 +88,7 @@ class GalleryStage extends StatelessWidget {
       return DecoratedBox(
         decoration: BoxDecoration(
           color: fill,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(kStageRadius),
         ),
         child: SizedBox(
           height: _tileHeight,

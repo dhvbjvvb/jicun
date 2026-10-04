@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 
+import 'package:jicun/ui/geometry.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/palette.dart';
 
@@ -33,7 +34,7 @@ class PlaybackPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(kStageRadius),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,

@@ -11,6 +11,7 @@ import 'package:jicun/ui/audio_stage.dart';
 import 'package:jicun/ui/copy_stage.dart';
 import 'package:jicun/ui/download_progress_card.dart';
 import 'package:jicun/ui/gallery_stage.dart';
+import 'package:jicun/ui/geometry.dart';
 import 'package:jicun/ui/glass.dart';
 import 'package:jicun/ui/icons.dart';
 import 'package:jicun/ui/motion.dart';
@@ -655,7 +656,7 @@ class PreviewStage extends StatelessWidget {
             ? DecoratedBox(
                 decoration: BoxDecoration(
                   color: fill,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(kStageRadius),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),

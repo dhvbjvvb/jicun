@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 
+import 'package:jicun/ui/geometry.dart';
 import 'package:jicun/ui/palette.dart';
 
 /// 文案卡的文字区,从 lib/pages/preview.dart 拆出来。
@@ -68,7 +69,7 @@ class CopyStageState extends State<CopyStage> {
         return DecoratedBox(
           decoration: BoxDecoration(
             color: fill,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(kStageRadius),
           ),
           child: ConstrainedBox(
             // 不满 12 行时不设上限,窗口自然收缩到文字高度
