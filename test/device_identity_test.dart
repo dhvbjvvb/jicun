@@ -458,7 +458,7 @@ void main() {
       expect(paths, <String>['/device/challenge', '/device/attest']);
     });
 
-    test('失败后 6 小时内不再重试(时间戳落盘)', () async {
+    test('失败后短期内不再重试(时间戳落盘;没身份时是 10 秒那一档)', () async {
       stubNative();
       var built = 0;
       deviceClientFactory = () {
@@ -478,6 +478,54 @@ void main() {
       resetDeviceIdentityCache();
       await ensureDeviceIdentity();
       expect(built, 1);
+    });
+
+    test('没登记成功过:10 秒后就能再试(不再等 6 小时)', () async {
+      // 退避分两档。没身份的设备现在等于废的(每个请求都被服务端拒),按 6 小时退避
+      // 就是让他白等 —— 装完/重装后第一次启动恰恰最容易失败。
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        kPrefsDeviceLastAttempt: DateTime.now().millisecondsSinceEpoch - 11000,
+      });
+      stubNative();
+      final paths = <String>[];
+      deviceClientFactory = () => MockClient((request) async {
+        paths.add(request.url.path);
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'succ': true,
+            'data': request.url.path == '/device/challenge'
+                ? <String, Object?>{'nonce': nonce}
+                : <String, Object?>{'device_id': deviceId},
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      await ensureDeviceIdentity();
+
+      expect(paths, <String>['/device/challenge', '/device/attest'],
+          reason: '11 秒前试过就该再试了(短的那一档是 10 秒)');
+    });
+
+    test('只是版本变了要补登记:退避仍然是 6 小时那一档', () async {
+      // 反面:这台设备的身份是好的,重登只是为了刷新机型/版本号 —— 失败了大可 6 小时后再来。
+      // 两档不能混:共用一个短退避的话,「升级」就成了绕过退避、每次启动都打接口的口子。
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        kPrefsDeviceId: deviceId,
+        kPrefsDeviceVersion: '3.2.7+17',                                        // 版本对不上 → 想补登记
+        kPrefsDeviceLastAttempt: DateTime.now().millisecondsSinceEpoch - 11000, // 11 秒前试过
+      });
+      stubNative(nativeId: deviceId);
+      var built = 0;
+      deviceClientFactory = () {
+        built++;
+        return MockClient((_) async => http.Response('{}', 200));
+      };
+
+      await ensureDeviceIdentity();
+
+      expect(built, 0, reason: '身份没问题,11 秒不够 —— 这一档是 6 小时');
     });
 
     test('attest 失败不抛异常,也不落盘 device_id', () async {
@@ -554,7 +602,11 @@ void main() {
       await registration;
     });
 
-    test('awaitDeviceIdentity:没有登记在跑时立刻回来,不新起一次请求', () async {
+    test('awaitDeviceIdentity:没跑过启动流程时(用例环境)绝不补登记', () async {
+      // 这条是**守卫**用例,不是功能用例:补登记那条路要读偏好存储,而 widget 用例会直接
+      // pump 一个页面、不跑启动流程。没有 [_startedThisProcess] 这道守卫,那些用例就会从
+      // 解析路径去打真实网络(踩过,整片 widget 用例超时)。resetDeviceIdentityCache() 连
+      // 「启动跑过没有」一起清掉,所以这里模拟的正是那种环境。
       SharedPreferences.setMockInitialValues(<String, Object>{});
       resetDeviceIdentityCache();
       var built = 0;
@@ -569,6 +621,32 @@ void main() {
       expect(await deviceHeaders('GET', '/parse', ''), isEmpty);
     });
 
+
+    test('awaitDeviceIdentity:设备没身份时会补起一次登记(不能只等下一次启动)', () async {
+      // 线上现场:重装(或密钥作废)之后登记失败过一次 —— 这台设备于是没有身份,服务端在
+      // enforce 下把它每个请求都拒掉。旧行为是「等下一次启动」,而启动又被 6 小时退避挡着,
+      // 用户只能反复撞同一面墙。现在:退避短(10 秒)+ 请求路径补一次。
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      resetDeviceIdentityCache();
+      var attempts = 0;
+      deviceClientFactory = () {
+        attempts++;
+        // 挑战值这一趟就一直失败,模拟「登记办不成」
+        return MockClient((_) async => http.Response('not json', 502));
+      };
+
+      await ensureDeviceIdentity();
+      expect(attempts, 1, reason: '启动那次先记一笔(顺便把 _startedThisProcess 立起来)');
+
+      // 等价于「等了 10 秒」:没身份时退避就是这么短
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(kPrefsDeviceLastAttempt,
+          DateTime.now().millisecondsSinceEpoch - 11000);
+
+      await awaitDeviceIdentity();
+
+      expect(attempts, 2, reason: '没身份时要在这里补一次,而不是干等下一次启动');
+    });
     test('awaitDeviceIdentity:登记卡住时最多等 timeout,不抛', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       resetDeviceIdentityCache();

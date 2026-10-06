@@ -53,6 +53,16 @@ const String kDeviceChannel = 'jicun/device';
 /// 网络环境多半已经发生了」的量级,又不至于一整天都不重试。
 const Duration kDeviceRetryInterval = Duration(hours: 6);
 
+/// **从没登记成功过**的设备的退避间隔 —— 比上面那个短两个数量级。
+///
+/// 为什么必须分开:这种设备现在等于**没有身份**。服务端在 `enforce` 下把它的每一个请求都
+/// 拒掉,而用户看到的是「请更新到最新版本」,更新了也没用 —— 这时候还按 6 小时退避,就是让
+/// 他白等 6 小时。装完/重装之后第一次启动恰恰是最容易失败的一次(安全芯片刚忙完、优选 IP
+/// 还在赛跑),线上就这么卡过一次:登记只走到「拿到挑战值」,之后请求全是未签名。
+///
+/// 10 秒只是个下限 —— 真正决定「什么时候再试」的是 [awaitDeviceIdentity](用户不发请求它不动)。
+const Duration kDeviceBootstrapRetryInterval = Duration(seconds: 10);
+
 /// 注册那两趟请求的超时。它发生在后台,失败了大不了下次再说。
 const Duration _httpTimeout = Duration(seconds: 10);
 
@@ -139,11 +149,19 @@ String? _cachedDeviceId;
 /// 正在跑的那一次注册。启动时的 [ensureDeviceIdentity] 与用例都可能撞上同一刻。
 Future<void>? _inFlight;
 
+/// 本次进程里 [ensureDeviceIdentity] 被调过没有 —— 启动流程一定会调它。
+///
+/// 用途只有一个:[awaitDeviceIdentity] 判断「要不要在请求路径上补起一次登记」。少了这道
+/// 判断,那些**不跑启动流程**的环境(widget 用例直接 pump 一个页面)也会从解析路径发起
+/// 真实网络请求 —— 踩过,整片用例超时。
+bool _startedThisProcess = false;
+
 /// 只给用例用:把内存缓存清掉,回到「还没查过」的状态。
 @visibleForTesting
 void resetDeviceIdentityCache() {
   _cachedDeviceId = null;
   _inFlight = null;
+  _startedThisProcess = false;
 }
 
 /// 确保这台设备已经注册过(幂等,可以反复调)。
@@ -156,6 +174,7 @@ void resetDeviceIdentityCache() {
 /// 照常发请求 —— 服务端在 `enforce` 模式下会自己拒,那是它的判断,不是 APP 该先崩
 /// 给用户看的理由。
 Future<void> ensureDeviceIdentity() {
+  _startedThisProcess = true;
   final running = _inFlight;
   if (running != null) return running;
   final task = _ensureDeviceIdentity();
@@ -171,9 +190,13 @@ Future<void> ensureDeviceIdentity() {
 /// 失败,把最后一个字符删掉再打回去就好了」(第二次请求时登记早就办完了)。
 ///
 /// 三条刻意的约束:
-///   1. **不在这儿新起一次登记** —— 只等已经在跑的那一个。启动时那次才是登记的入口;
-///      在解析这条路上顺手起一个,等于让「解析」去碰网络,用例和冷启动都会被拖住。
-///   2. **不吃偏好存储**:和 [deviceHeaders] 同一条纪律(见那里的说明)。
+///   1. **默认不在这儿新起一次登记**,只等已经在跑的那一个 —— 启动那次才是登记的入口。
+///      **一个例外**:这台设备根本没有身份时补起一次(从没登记成功过,或者落盘的 id 已经
+///      签不出东西)。那种状态下它每个请求都会被拒,用户看到的是「请更新到最新版本」而更新
+///      根本没用;与其让他一直撞墙,不如救一次。频率由退避管着,而且只在跑过启动流程的进程里
+///      生效(见 [_recoverMissingIdentity])。
+///   2. **不吃偏好存储**:和 [deviceHeaders] 同一条纪律(见那里的说明)。上面那个例外是
+///      唯一的破例,而且它被 [_startedThisProcess] 挡在用例环境之外。
 ///   3. **超时就往下走**,不抛:卡在这儿等,用户看到的是「一直在转」,比一个能看懂的
 ///      报错更糟。真正决定放不放行的是服务端。
 ///
@@ -185,11 +208,41 @@ Future<void> awaitDeviceIdentity({
 }) async {
   if (_deviceId() != null) return;
   final running = _inFlight;
-  if (running == null) return;
+  if (running == null) {
+    await _recoverMissingIdentity(timeout);
+    return;
+  }
   try {
     await running.timeout(timeout);
   } catch (_) {
     // 超时 / 登记失败都照常往下走:这一趟会变成一次没签名的请求,由服务端去判。
+  }
+}
+
+/// 没有正在跑的登记、而且这台设备**没有身份**时,补起一次。
+///
+/// 为什么值得破「不在请求路径上碰网络」这条:那种设备现在等于废的 —— 服务端把它每个请求
+/// 都拒掉,提示还是「请更新到最新版本」(更新了也没用)。线上实测过:重装之后有一次登记
+/// 只走到「拿到挑战值」就断了(证书链读不出来,见 DeviceIdentity.kt 的 createKey),
+/// 之后这台设备一直是未签名状态,用户只能反复撞墙。
+///
+/// 两道闸门保证它不会变成「每个请求都打两次注册接口」:
+///   1. [_startedThisProcess] —— 本次进程连启动流程都没跑过就直接返回。widget 用例
+///      (直接 pump 一个页面)正是这种环境,放它进来就会去打真实网络;
+///   2. [_dueForRetry] —— 频率由 [kDeviceBootstrapRetryInterval](10 秒)管着。
+Future<void> _recoverMissingIdentity(Duration timeout) async {
+  if (!_startedThisProcess) return;
+  final SharedPreferences prefs;
+  try {
+    prefs = await SharedPreferences.getInstance();
+  } catch (_) {
+    return;                       // 拿不到偏好存储(插件异常):什么都别做
+  }
+  if (!_dueForRetry(prefs, kDeviceBootstrapRetryInterval)) return;
+  try {
+    await ensureDeviceIdentity().timeout(timeout);
+  } catch (_) {
+    // 还是没成:照常发这一趟(会变成未签名请求),由服务端去判。
   }
 }
 
@@ -222,9 +275,11 @@ Future<void> _ensureDeviceIdentity() async {
       _cachedDeviceId = null;
     }
 
-    // 退避:上次试过还没成功就别再试(见 kDeviceRetryInterval)。
+    // 退避:上次试过还没成功就别再试。这里用**短的那一档** —— 走到这一步说明这台设备
+    // 现在没有可用的身份(压根没落盘的 id,或者落盘的 id 已经签不出东西了),它的每个请求
+    // 都会被服务端拒掉,慢慢退避是错的(见 kDeviceBootstrapRetryInterval)。
     // 时间戳**先落盘再发请求**:请求本身崩了/进程被杀,也算"试过了"。
-    if (!_dueForRetry(prefs.getInt(kPrefsDeviceLastAttempt))) return;
+    if (!_dueForRetry(prefs, kDeviceBootstrapRetryInterval)) return;
     await prefs.setInt(
       kPrefsDeviceLastAttempt,
       DateTime.now().millisecondsSinceEpoch,
@@ -264,8 +319,9 @@ Future<void> _storeRegistration(SharedPreferences prefs, String deviceId) async 
 Future<void> _refreshRegistrationIfVersionChanged(SharedPreferences prefs) async {
   final version = await _appVersion();
   if (prefs.getString(kPrefsDeviceVersion) == version) return;
-  // 和首次注册共用同一个退避:否则「升级」就成了绕过退避、每次启动都打注册接口的口子。
-  if (!_dueForRetry(prefs.getInt(kPrefsDeviceLastAttempt))) return;
+  // 共用同一份时间戳,但这里用**长的那一档**:这台设备的身份是好的(落盘的 id 和密钥
+  // 对得上),只是为了刷新机型/版本号才重登一次,失败了大可 6 小时后再来。
+  if (!_dueForRetry(prefs, kDeviceRetryInterval)) return;
   await prefs.setInt(
     kPrefsDeviceLastAttempt,
     DateTime.now().millisecondsSinceEpoch,
@@ -281,10 +337,14 @@ Future<void> _refreshRegistrationIfVersionChanged(SharedPreferences prefs) async
 }
 
 /// 距上次尝试够久(或从来没试过)才值得再试一次。
-bool _dueForRetry(int? lastAttempt) {
+///
+/// [interval] 由调用方给,因为两条路「值不值得再试」完全不同:没有身份时用
+/// [kDeviceBootstrapRetryInterval](短),只是刷新机型/版本号时用 [kDeviceRetryInterval](长)。
+bool _dueForRetry(SharedPreferences prefs, Duration interval) {
+  final lastAttempt = prefs.getInt(kPrefsDeviceLastAttempt);
   if (lastAttempt == null) return true;
   final elapsed = DateTime.now().millisecondsSinceEpoch - lastAttempt;
-  return elapsed >= kDeviceRetryInterval.inMilliseconds;
+  return elapsed >= interval.inMilliseconds;
 }
 
 /// 问原生要一次 device_id(顺带验证密钥还在)。没有密钥返回 null。

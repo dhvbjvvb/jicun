@@ -227,29 +227,29 @@ internal object DeviceIdentity {
      * 签名直接复用这把密钥,不再重新证明(证明只要做一次,服务端也已经存下了那张证书链)。
      */
     private fun createKey(challengeText: String): Map<String, Any?> {
-        val current = keyStore()
-        if (!current.containsAlias(DEVICE_KEY_ALIAS)) {
-            val challenge = if (challengeText.isEmpty()) {
-                ByteArray(0)
-            } else {
-                decodeBase64Url(challengeText)
-            }
-            try {
-                generateDeviceKey(challenge, strongBox = true)
-                Log.i(TAG, "设备密钥已生成(StrongBox)")
-            } catch (error: Throwable) {
-                // StrongBox 是「声明支持但常常用不了」的东西:不少机器根本没有独立安全芯片,
-                // 有的 ROM 支持却会抛 ProviderException 之类的别的异常 —— 所以这里**不是**
-                // 只 catch StrongBoxUnavailableException,而是任何异常都退回普通 TEE 再来一次。
-                // TEE 也是硬件密钥,Key Attestation 照样成立,只是安全等级低一档。
-                Log.w(TAG, "StrongBox 生成失败,退回 TEE:${briefReason(error)}")
-                // 上一次可能已经留下了半个条目(密钥库状态不确定),先清掉再生成。
-                runCatching { current.deleteEntry(DEVICE_KEY_ALIAS) }
-                generateDeviceKey(challenge, strongBox = false)
-            }
-        }
+        val challenge = if (challengeText.isEmpty()) ByteArray(0) else decodeBase64Url(challengeText)
+        ensureDeviceKey(challenge)
 
-        val chain = deviceChain().orEmpty()
+        // 读证书链这一步**必须能自愈**。线上实测过一次:重装之后「挑战值拿到了,却始终
+        // 没有 attest」—— 卡的就是这里。deviceChain() 用的是**缓存下来的 KeyStore 实例**,
+        // 而那个实例可能还不认刚生成的别名(signB64 里为同一个坑已经写过一次丢缓存重试,
+        // 这里当时漏了)。三种情况依次往下兜:
+        var chain = deviceChain().orEmpty()
+        if (chain.isEmpty()) {
+            Log.w(TAG, "读完证书链是空的,丢掉缓存的 KeyStore 实例再读一次")
+            store = null
+            chain = deviceChain().orEmpty()
+        }
+        if (chain.isEmpty()) {
+            // 还是空:这个别名已经废了(密钥在、证书链读不出来,谁也签不了它)。
+            // 清掉重建一把 —— 宁可换一个 device_id(服务端那边会多出一行,旧行删掉即可),
+            // 也好过这台设备永远停在「请更新到最新版本」上,还得重装一次才能好。
+            Log.w(TAG, "证书链仍然读不到,清掉这个别名重建")
+            runCatching { keyStore().deleteEntry(DEVICE_KEY_ALIAS) }
+            store = null
+            ensureDeviceKey(challenge)
+            chain = deviceChain().orEmpty()
+        }
         val leaf = chain.firstOrNull()
             ?: throw IllegalStateException("密钥库里没有证书链")
         return mapOf(
@@ -265,6 +265,30 @@ internal object DeviceIdentity {
             "manufacturer" to (Build.MANUFACTURER ?: ""),
             "model" to (Build.MODEL ?: ""),
         )
+    }
+
+    /**
+     * 保证设备密钥存在(StrongBox 优先,TEE 兜底)。
+     *
+     * 抽出来是因为它有两个调用点:正常生成,以及下面「别名废了、清掉重建」那条自愈路。
+     * 两处的退避逻辑必须一模一样,不然迟早漂。
+     */
+    private fun ensureDeviceKey(challenge: ByteArray) {
+        val current = keyStore()
+        if (current.containsAlias(DEVICE_KEY_ALIAS)) return
+        try {
+            generateDeviceKey(challenge, strongBox = true)
+            Log.i(TAG, "设备密钥已生成(StrongBox)")
+        } catch (error: Throwable) {
+            // StrongBox 是「声明支持但常常用不了」的东西:不少机器根本没有独立安全芯片,
+            // 有的 ROM 支持却会抛 ProviderException 之类的别的异常 —— 所以这里**不是**
+            // 只 catch StrongBoxUnavailableException,而是任何异常都退回普通 TEE 再来一次。
+            // TEE 也是硬件密钥,Key Attestation 照样成立,只是安全等级低一档。
+            Log.w(TAG, "StrongBox 生成失败,退回 TEE:${briefReason(error)}")
+            // 上一次可能已经留下了半个条目(密钥库状态不确定),先清掉再生成。
+            runCatching { current.deleteEntry(DEVICE_KEY_ALIAS) }
+            generateDeviceKey(challenge, strongBox = false)
+        }
     }
 
     /**
