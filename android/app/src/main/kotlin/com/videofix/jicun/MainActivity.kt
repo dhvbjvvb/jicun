@@ -26,6 +26,7 @@ internal const val TAG = "Jicun"
  * - 应用内更新(APK 交给系统安装器 / ABI)→ UpdateInstaller.kt
  * - 夜间模式与启动入口 → LaunchEntryController.kt
  * - 读剪贴板 → ClipboardBridge.kt
+ * - 设备身份与硬件密钥证明 → DeviceIdentity.kt
  */
 open class MainActivity : FlutterActivity() {
     /**
@@ -140,6 +141,11 @@ open class MainActivity : FlutterActivity() {
                 }
                 result.success(benchArgs)
             }
+
+        // 设备身份 + 硬件密钥证明(整块逻辑在 DeviceIdentity.kt):首次启动在安全芯片里
+        // 生成一把不可导出的密钥,把芯片签发的证明书链交给服务端,之后每个解析请求用它签名。
+        // 这里只挂通道 —— 密钥生成那几十行别塞进下面这个 when。
+        DeviceIdentity.attach(flutterEngine)
         // 通道提成具名变量:`publish` 那条路要在复制过程中反向推进度(dnCopyProgress),
         // 得能从回调里拿到同一个通道。
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)

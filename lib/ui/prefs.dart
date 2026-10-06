@@ -41,6 +41,19 @@ const String kPrefsApiHost = 'api.host';
 /// 只有一份(见 lib/sponsor_store.dart)。
 const String kPrefsSponsors = 'sponsors.list';
 
+// 设备身份(硬件密钥证明),见 lib/device_identity.dart。
+//
+// `device.id` 是服务端认设备的那个 id(它自己也是从硬件公钥推出来的);另外两个是本地
+// 时间戳 —— 前者记证明是什么时候办下来的(排障用),后者用来做失败重试的退避:
+// 没它的话每次解析请求都会先去打注册接口(见 kDeviceRetryInterval)。
+const String kPrefsDeviceId = 'device.id';
+const String kPrefsDeviceAttestedAt = 'device.attestedAt';
+const String kPrefsDeviceLastAttempt = 'device.lastAttempt';
+// 上次登记时上报的 App 版本。它只用来判断「要不要补登记一次」:机型、android_api、
+// App 版本都是**登记那一刻**报上去的,升级后不补一次,后台那条记录就永远停在旧值
+// (机型那列会一直空着)。见 device_identity.dart 的 _refreshRegistrationIfVersionChanged。
+const String kPrefsDeviceVersion = 'device.version';
+
 /// 系统主题的三个选项。存进 [kPrefsThemeMode],设置页与根壳都读它 ——
 /// 放在这里是为了让 ShellController 和设置页都能引用,不必互相 import。
 enum AppThemeMode { system, light, dark }
