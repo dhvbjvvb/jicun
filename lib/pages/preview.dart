@@ -386,19 +386,20 @@ class PreviewCardState extends State<PreviewCard> {
             fileName: '${safeFileName(rawTitle, ext: ext)}.$ext',
             kind: asVideo ? MediaKind.video : MediaKind.audio,
             // 标签只给**真按音频存**的那条。asVideo 时落盘的是视频,内嵌音频标签
-            // 没有任何播放器会读。歌词拿服务端给的原文剥掉时间轴 —— 内嵌的歌词帧
-            // 不带时间轴,带上播放器只会把 `[00:02.63]` 一起显示出来(见
-            // audio_tags.dart 的 [lyricsPlainText]);没有歌词就是空串,那种情况
-            // 只写封面 / 标题 / 作者,不影响下载。
+            // 没有任何播放器会读。
             //
             // 标题用 rawTitle 而不是 result.title:后者可能带着平台塞进来的媒体
             // 后缀(见上面的 [stripMediaExtension]),内嵌进播放器显示会很难看。
+            //
             tags: asVideo
                 ? null
                 : AudioTagInfo(
                     title: rawTitle,
                     artist: result.authorName,
-                    lyrics: lyricsPlainText(result.lyrics),
+                    // **带时间轴**写进去(m4a 上会在 `©lyr` 与 `©des` 各写一份):
+                    // 播放器认哪个字段、认不认没有时间轴的歌词各家不同,而能滚动
+                    // 显示的那种情况,歌词都是带时间轴的(见 AudioTagInfo.lyrics)。
+                    lyrics: result.lyrics,
                     coverUrl: result.coverUrl ?? '',
                   ),
           ),

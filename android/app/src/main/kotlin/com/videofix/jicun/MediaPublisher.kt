@@ -133,7 +133,7 @@ internal fun handlePublish(
         }
         publishMain.post {
             outcome.fold(
-                onSuccess = { uri -> result.success(uri.toString()) },
+                onSuccess = { audio -> result.success(audio.uri.toString()) },
                 onFailure = { error ->
                     source.delete()
                     result.error("publish_failed", error.message ?: error.toString(), null)
@@ -165,6 +165,9 @@ internal fun treeLabel(uri: Uri): String = try {
  *
  * 删的是媒体库条目,不只是文件:留着条目的话相册里会有一个打不开的壳。
  * 已经不在(用户自己删了、或系统已经清理)不算失败 —— 结果要的是"它不在了"。
+ *
+ * 旁挂歌词不用这里操心:MediaStore 那条路本来就写不进 `.lrc`(见 [publishSidecar]),
+ * SAF 那条路在用户自己的目录里,文档 uri 上拿不到 tree,不值得为一份 2KB 的歌词再存授权。
  */
 internal fun unpublish(context: Context, uri: String?, result: MethodChannel.Result) {
     if (uri.isNullOrBlank()) {
@@ -201,7 +204,7 @@ private fun publish(
     fileName: String,
     kind: Kind,
     onProgress: ((copied: Long, total: Long) -> Unit)?,
-): Uri {
+): Published {
     val resolver = context.contentResolver
     val collection = when (kind.media) {
         Media.AUDIO ->
@@ -263,7 +266,7 @@ private fun publish(
         "publish ${source.length() / (1 shl 20)}MB 搬进媒体库用时 " +
             "${System.currentTimeMillis() - copyStarted}ms → $finalName",
     )
-    return uri
+    return Published(uri)
 }
 
 /**
@@ -282,7 +285,7 @@ private fun publishToTree(
     kind: Kind,
     treeUri: Uri,
     onProgress: ((copied: Long, total: Long) -> Unit)?,
-): Uri {
+): Published {
     val resolver = context.contentResolver
     val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
     val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
@@ -326,8 +329,11 @@ private fun publishToTree(
         ),
         onProgress,
     )
-    return docUri
+    return Published(docUri)
 }
+
+/** 一次发布的结果:媒体库给的那条 uri(SAF 那条给的是文档 uri)。 */
+private data class Published(val uri: Uri)
 
 /**
  * SAF 目录里没被占用的名字。查同目录的子项,撞名规则和 [nextFreeName] 一样

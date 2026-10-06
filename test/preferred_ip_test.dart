@@ -65,11 +65,13 @@ void main() {
     setUp(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       setApiHost(kApiHosts.first);
     });
     tearDown(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       setApiHost(kApiHosts.first);
     });
 
@@ -93,6 +95,7 @@ void main() {
 
     test('备用线路顺序:当前域名 → 其它域名 → 优选 IP(截断到 3 个)', () {
       PreferredIpConnector.remote = const ['9.9.9.9'];
+      PreferredIpConnector.cfHost = 'cf.example.com';
       final connector = PreferredIpConnector(
         pool: const ['1.1.1.1', '2.2.2.2', '3.3.3.3'],
       );
@@ -100,15 +103,27 @@ void main() {
       expect(connector.fallbackTargets, [
         // 域名先各占一个候选(target 就是域名本身 —— 靠 SNI 换域名重连)
         for (final host in connector.managedHosts) (host, host),
-        // 然后才轮到优选 IP,且最多 3 个:池里第 4 个(3.3.3.3)会被截掉
-        (kApiHosts.first, '9.9.9.9'),
-        (kApiHosts.first, '1.1.1.1'),
-        (kApiHosts.first, '2.2.2.2'),
+        // 然后才轮到优选 IP,且最多 3 个:池里第 4 个(3.3.3.3)会被截掉。
+        // SNI 用 cfHost,不是 hosts.first —— 池里全是 Cloudflare 边缘地址,
+        // 只有走 CF 的那个域名认它们。
+        ('cf.example.com', '9.9.9.9'),
+        ('cf.example.com', '1.1.1.1'),
+        ('cf.example.com', '2.2.2.2'),
+      ]);
+    });
+
+    test('cfHost 为空时一个优选 IP 都不赛跑(没有 CF 域名可绑,绑了也是白占位)', () {
+      PreferredIpConnector.remote = const ['9.9.9.9'];
+      final connector = PreferredIpConnector(pool: const ['1.1.1.1']);
+
+      expect(connector.fallbackTargets, [
+        for (final host in connector.managedHosts) (host, host),
       ]);
     });
 
     test('池里的地址不会重复参赛', () {
       PreferredIpConnector.remote = const ['1.1.1.1'];
+      PreferredIpConnector.cfHost = 'cf.example.com';
       final connector = PreferredIpConnector(
         pool: const ['1.1.1.1', '2.2.2.2'],
       );
@@ -197,6 +212,7 @@ void main() {
     setUp(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       setApiHost(kApiHosts.first);
       PreferredIpUpdater.fallbackClientFactory = () =>
           MockClient((_) async => http.Response('', 502));
@@ -204,6 +220,7 @@ void main() {
     tearDown(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       setApiHost(kApiHosts.first);
       PreferredIpUpdater.fallbackClientFactory = originalFallbackClient;
     });
@@ -256,14 +273,14 @@ void main() {
     });
 
     test('当前域名不通时,挨个候选域名继续试', () async {
-      // 内置域名现在只剩一个,第二个候选得由服务端下发的域名表来提供 ——
+      // 内置域名一个都不通,下一个候选就得由服务端下发的域名表来提供 ——
       // 这正是「换域名不用发版」那条路。
       PreferredIpConnector.remoteHosts = const ['backup.example.com'];
       final seen = <String>[];
       final updater = PreferredIpUpdater(
         client: MockClient((request) async {
           seen.add(request.url.host);
-          if (request.url.host == kApiHosts.first) {
+          if (kApiHosts.contains(request.url.host)) {
             throw const SocketException('被运营商阻断了');
           }
           return http.Response('{"hosts":["backup.example.com"]}', 200);
@@ -272,7 +289,7 @@ void main() {
 
       final config = await updater.fetch();
 
-      expect(seen, [kApiHosts.first, 'backup.example.com']);
+      expect(seen, [...kApiHosts, 'backup.example.com']);
       expect(config.hosts, ['backup.example.com']);
       expect(updater.lastHost, 'backup.example.com');
     });
@@ -353,12 +370,14 @@ void main() {
     setUp(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       supportedHosts = const [];
       setApiHost(kApiHosts.first);
     });
     tearDown(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       supportedHosts = const [];
       setApiHost(kApiHosts.first);
       PreferredIpUpdater.fallbackClientFactory = originalFallbackClient;
@@ -388,8 +407,10 @@ void main() {
 
       final config = await updater.fetch();
 
-      // 普通线路先真的试过,全挂了才轮到兜底。
-      expect(plainSeen, [kApiHosts.first]);
+      // 普通线路先真的试过(候选=内置的那两个域名),全挂了才轮到兜底。
+      expect(plainSeen, kApiHosts);
+      // 兜底 client 第一个域名就答上来了,所以它只试一次 —— 这正是「能连上就立刻
+      // 用,不把候选全打一遍」,不是漏试。
       expect(fallbackSeen, [kApiHosts.first]);
       // 拉回来的配置要真的生效:白名单、域名候选、IP 池、以及换域名。
       expect(config.hosts, ['new.example.com']);
@@ -425,6 +446,7 @@ void main() {
     setUp(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       supportedHosts = const [];
       setApiHost(kApiHosts.first);
       // 这条路上也可能走到兜底 client,一并挡住。
@@ -434,6 +456,7 @@ void main() {
     tearDown(() {
       PreferredIpConnector.remote = const [];
       PreferredIpConnector.remoteHosts = const [];
+      PreferredIpConnector.cfHost = '';
       supportedHosts = const [];
       setApiHost(kApiHosts.first);
       PreferredIpUpdater.fallbackClientFactory = originalFallbackClient;
@@ -445,8 +468,8 @@ void main() {
       PreferredIpUpdater.overrideClient(
         MockClient(
           (_) async => http.Response(
-            '{"hosts":["new.example.com"],"ips":["9.9.9.9"],'
-            '"supported":["v.douyin.com"]}',
+            '{"hosts":["new.example.com"],"cf_host":"cf.example.com",'
+            '"ips":["9.9.9.9"],"supported":["v.douyin.com"]}',
             200,
           ),
         ),
@@ -459,6 +482,7 @@ void main() {
       ) as Map<String, dynamic>;
       expect(cached['hosts'], ['new.example.com']);
       expect(cached['ips'], ['9.9.9.9']);
+      expect(cached['cf_host'], 'cf.example.com', reason: '冷启动要靠它绑优选 IP');
       expect(cached['supported'], ['v.douyin.com']);
       // 换掉的域名也要落盘:下次冷启动先用它,而不是拿内置域名去撞一次墙。
       expect(prefs.getString(kPrefsApiHost), 'new.example.com');
@@ -471,17 +495,38 @@ void main() {
         jsonEncode({
           'ips': ['9.9.9.9'],
           'hosts': ['new.example.com'],
+          'cf_host': 'cf.example.com',
           'supported': ['v.douyin.com'],
         }),
       );
 
       expect(PreferredIpConnector.remote, ['9.9.9.9']);
       expect(PreferredIpConnector.remoteHosts, ['new.example.com']);
+      expect(PreferredIpConnector.cfHost, 'cf.example.com', reason: '优选 IP 要绑它');
       expect(supportedHosts, ['v.douyin.com']);
       // 没缓存(从没拉过)就什么都不动,继续用内置兜底。
       PreferredIpConnector.remoteHosts = const [];
       restoreCachedConfig(null);
       expect(PreferredIpConnector.remoteHosts, isEmpty);
+    });
+
+    test('升级前的旧缓存里没有 cf_host,不能把它清成空串', () async {
+      // 无条件覆盖的写法会让连接器以为「没有 CF 域名」,于是干脆不赛跑优选 IP ——
+      // 等于把功能关到下一次刷新为止(最长 kPreferredIpsTtl 那么久)。
+      PreferredIpConnector.cfHost = 'cf.example.com';
+
+      restoreCachedConfig(
+        jsonEncode({
+          'ips': ['9.9.9.9'],
+          'hosts': ['new.example.com'],
+        }),
+      );
+
+      expect(
+        PreferredIpConnector.cfHost,
+        'cf.example.com',
+        reason: '旧缓存缺字段不该把它清掉',
+      );
     });
   });
 }

@@ -39,25 +39,27 @@ Future<void> main(List<String> args) async {
   }
 }
 
-/// 原样打印两条上游的应答。只用来对着字段名 —— 这里不做任何映射。
+/// 原样打印第三方与兜底两条路的应答。只用来对着字段名 —— 这里不做任何映射。
 Future<void> _dumpRaw(String link) async {
-  // 上游是每个平台一条接口,`upstreamPaths` 里存的就是**完整地址**(APP 直连,
-  // 不经我们的反代了)。认不出平台就说明这条不走上游。
-  final upstream = ParseService.upstreamPaths[detectPlatform(link)];
+  // 第三方一个平台一条接口,两张表里存的就是**完整地址**(APP 直连,不经我们的
+  // 反代了):`upstreamPaths` 是付费那家(带密钥),`publicUpstreamPaths` 是公开
+  // 那家(免密钥,比如汽水音乐)。认不出平台就说明这条不走上游。
+  final platform = detectPlatform(link);
+  final keyed = ParseService.upstreamPaths[platform];
+  final open = ParseService.publicUpstreamPaths[platform];
+  final upstream = keyed ?? open;
   final endpoints = <String>[?upstream, ParseService.endpoint];
   for (final endpoint in endpoints) {
     final uri = Uri.parse(endpoint).replace(queryParameters: {'url': link});
     try {
-      // 上游那条要带密钥(客户端里那份),media-parser 那条不带 —— 它的密钥由
-      // 我们自己的 nginx 注入。
-      final isUpstream = endpoint == upstream;
+      // 密钥**只发给付费那家**:media-parser 那条的密钥由我们自己的 nginx 注入,
+      // 公开接口更不该拿到它(见 ParseService.publicUpstreamPaths)。
+      final needsKey = keyed != null && endpoint == keyed;
       final response = await http
           .get(
             uri,
-            headers: isUpstream
-                ? const <String, String>{
-                    'X-API-Key': ParseService.upstreamApiKey,
-                  }
+            headers: needsKey
+                ? <String, String>{'X-API-Key': ParseService.upstreamApiKey}
                 : null,
           )
           .timeout(const Duration(seconds: 30));

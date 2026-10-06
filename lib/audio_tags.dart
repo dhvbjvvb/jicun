@@ -23,8 +23,21 @@ class AudioTagInfo {
   /// 专辑名。解析出来的结果里暂时没有这个字段,留着是为了以后上游给了不用再改结构。
   final String album;
 
-  /// 歌词原文(LRC 或纯文本)。写进文件前先过一遍 [lyricsPlainText] ——
-  /// 内嵌的歌词帧**没有时间轴**,见 [_id3Lyrics]。
+  /// 要内嵌的歌词原文(LRC 或纯文本),**带着时间轴**写进去。MP4 里写**两份**
+  /// (`©lyr` 与 `©des`),两份放的是同一份文本。
+  ///
+  /// **为什么两个字段都写、而且都留时间轴**(2026-10-06 在用户手机上逐条验的):
+  /// 播放器读哪个字段、认不认没有时间轴的歌词,各家不一样,同一个播放器对不同
+  /// 来源的文件也不一样 ——
+  ///   - NeriPlayer 读**同一个文件的两份拷贝**,一份拿到 `©des`(带时间轴)、
+  ///     一份只拿到 `©lyr`(无时间轴);而它能滚动显示歌词的那种情况,歌词是
+  ///     带时间轴的。我们把时间轴剥掉的那些文件,它的歌词页就是一片空白。
+  ///   - 只写 `©des` 也救不了只读 `©lyr` 的那条路。
+  /// 所以:同一份**带时间轴**的歌词同时写进 `©lyr` 与 `©des`。ID3 那条路只有
+  /// 一个 `USLT`,同样写这一份(见 [_id3Lyrics])。
+  ///
+  /// 代价:不解析 LRC、把标签原样显示出来的播放器会把 `[00:02.63]` 当正文一起
+  /// 显示。那种播放器本来也显示不出歌词,两害相权取其轻。
   final String lyrics;
 
   /// 封面地址。抓下来的是原图字节,直接内嵌。
@@ -38,36 +51,6 @@ class AudioTagInfo {
       coverUrl.isEmpty;
 }
 
-/// 时间轴标签:`[mm:ss]` / `[mm:ss.xx]`,一行可能挂好几个 —— 全去掉。
-final RegExp _lrcTimeTag = RegExp(r'\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\]');
-
-/// 元信息行:`[ar:歌手]` `[ti:歌名]` `[offset:0]` 这类,整行没有正文。
-final RegExp _lrcMetaLine = RegExp(r'^\[[a-zA-Z#]+:.*\]$');
-
-/// 把 LRC 歌词剥成纯文本,给 [AudioTagInfo.lyrics] 用。
-///
-/// 内嵌歌词的容器(ID3 的 `USLT`、MP4 的 `©lyr`)按规范就是「无时间轴歌词」,
-/// 把时间轴塞进去,多数播放器只会把 `[00:02.63]` 跟着正文一起显示出来 ——
-/// 要滚动得靠同名 `.lrc` 旁挂文件(见 [_id3Lyrics])。所以服务端给的 LRC
-/// (见 parse_service.dart 的 `lyrics`)在这里只取正文:时间轴标签去掉,
-/// 纯元信息行整行丢掉,同一行挂多个时间轴的只留一次正文。
-///
-/// 本来就是纯文本的(服务端也可能这么给)原样返回,空行、缩进都不动。
-///
-/// `ponytail:` 正文里真出现 `[123:45]` 这种样子的会被误当时间轴;歌词正文里
-/// 不该有,真碰到了再改成按行首匹配。
-String lyricsPlainText(String lyrics) {
-  if (!_lrcTimeTag.hasMatch(lyrics)) return lyrics.trim();
-
-  final lines = <String>[];
-  for (final raw in lyrics.split('\n')) {
-    final line = raw.trim();
-    if (line.isEmpty || _lrcMetaLine.hasMatch(line)) continue;
-    final text = line.replaceAll(_lrcTimeTag, '').trim();
-    if (text.isNotEmpty) lines.add(text);
-  }
-  return lines.join('\n');
-}
 
 /// 封面超过这个大小就不内嵌。
 ///
@@ -177,6 +160,7 @@ const String _kNam = '\u00A9nam';
 const String _kArt = '\u00A9ART';
 const String _kAlb = '\u00A9alb';
 const String _kLyr = '\u00A9lyr';
+const String _kDes = '\u00A9des';
 const String _kCovr = 'covr';
 
 /// 往 MP4 / M4A 里写 `moov.udta.meta.ilst`。写不了返回 null。
@@ -204,6 +188,7 @@ List<int>? writeMp4Tag(List<int> src, AudioTagInfo tags, List<int>? cover) {
     if (tags.artist.isNotEmpty) _mp4Text(_kArt, tags.artist),
     if (tags.album.isNotEmpty) _mp4Text(_kAlb, tags.album),
     if (tags.lyrics.isNotEmpty) _mp4Text(_kLyr, tags.lyrics),
+    if (tags.lyrics.isNotEmpty) _mp4Text(_kDes, tags.lyrics),
     if (cover != null && coverKind != null)
       _mp4Cover(cover, coverKind == _ImageKind.jpeg ? 13 : 14),
   ];
@@ -214,6 +199,7 @@ List<int>? writeMp4Tag(List<int> src, AudioTagInfo tags, List<int>? cover) {
     if (tags.artist.isNotEmpty) _kArt,
     if (tags.album.isNotEmpty) _kAlb,
     if (tags.lyrics.isNotEmpty) _kLyr,
+    if (tags.lyrics.isNotEmpty) _kDes,
     if (cover != null && coverKind != null) _kCovr,
   };
 

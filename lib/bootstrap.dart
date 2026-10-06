@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_host.dart';
 import 'bench.dart';
 import 'cover_cache.dart';
+import 'device_identity.dart';
 import 'downloader.dart';
 import 'preferred_ip.dart';
 import 'sponsor_store.dart';
@@ -72,6 +73,15 @@ void restoreCachedConfig(String? cached) {
   // 以前这里漏了它,于是冷启动后 remoteHosts 是空的 —— 当前域名被运营商阻断时,
   // 连接器手上只剩内置域名/优选 IP,「服务端换域名、老客户端跟着走」这条路等于断了。
   if (config.hosts.isNotEmpty) PreferredIpConnector.remoteHosts = config.hosts;
+  // cf_host 也要在第一帧之前就位:优选 IP 赛跑要靠它做 SNI。
+  //
+  // 和上面两条一样是**有值才覆盖**(不是无条件):这份缓存可能来自升级前的旧版本,
+  // 里面根本没有这个字段 —— 无条件写下去就成了空串,连接器会以为「没有 CF 域名」
+  // 而干脆不赛跑 IP,等于把功能关到下一次刷新为止(最长 12 小时,见 kPreferredIpsTtl)。
+  //
+  // 反过来,服务端**真的想关掉**它时会下发一个空字符串(见 jicun-cfip.sh),
+  // 那条路走的是 _apply 的无条件覆盖,不会被这里挡住。
+  if (config.cfHost.isNotEmpty) PreferredIpConnector.cfHost = config.cfHost;
   // 支持域名表也要在第一帧之前就位：用户完全可能一进 APP 就粘一条不支持的
   // 链接，那一发就该在本地被拦掉，而不是等后台刷新回来才知道。
   supportedHosts = config.supported;
@@ -87,6 +97,16 @@ void warmUp() {
   // 赞助名单顺手刷一次:这个二级页多半在启动后几十秒内就被点开,启动时刷过
   // 那一趟之后打开它就不用再等。30 秒内不会重复打网络(见 SponsorStore)。
   unawaited(sponsorStore.ensureLoaded());
+  // 设备身份 + 硬件密钥证明:首次启动注册一次 —— 拿挑战值、在安全芯片里生成密钥、
+  // 把证书链交给服务端换一个 device_id 落盘(见 lib/device_identity.dart)。
+  //
+  // 绝不 await:它要过网络和安全芯片,而登记这条路整个是**静默**的,没办成也不该让
+  // 用户看见任何差别。失败后 6 小时内不再试第二次。
+  //
+  // 「这里不 await」≠「请求不用等它」:**解析请求发出去之前会等一次正在跑的登记**
+  // (见 awaitDeviceIdentity)。少了那一步,用户一进来就粘贴解析时那一次会不带签名头,
+  // 服务端在 enforce 下必然 403 —— 线上实测就是「第一次粘贴必失败,重敲一遍就好」。
+  unawaited(ensureDeviceIdentity());
 }
 
 /// 拉服务端下发的域名表与优选 IP 并落盘。
@@ -101,6 +121,9 @@ Future<void> refreshPreferredIps(SharedPreferences? prefs) async {
     jsonEncode({
       'ips': config.ips,
       'hosts': config.hosts,
+      // cf_host 也要落盘:优选 IP 的赛跑要靠它做 SNI,冷启动读回来之前没有它就去
+      // 连 CF 的边缘 IP,握手必然失败。
+      'cf_host': config.cfHost,
       'supported': config.supported,
     }),
   );

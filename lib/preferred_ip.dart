@@ -109,8 +109,9 @@ typedef WinnerReport = ({
 /// 这里全程用真域名做 SNI 和证书校验,没有降级验证。
 ///
 /// 两条备用线路都挂在这里,是因为它们是同一件事的两种失败面:
-///   1. **换 IP**:域名没问题,但系统 DNS 给的边缘节点这条路不通 —— 所以拿优选 IP
-///      做 SNI 仍是当前域名,证书照样过。
+///   1. **换 IP**:域名没问题,但系统 DNS 给的 Cloudflare 边缘节点这条路不通 ——
+///      所以拿优选 IP 去连**别的**边缘节点。这些 IP 只能绑在 [cfHost](走 CF 回源的
+///      那个域名)上,SNI 与证书校验都按它来。
 ///   2. **换域名**:域名被运营商按 SNI 阻断,这时任何 IP 都救不了 —— 只能换一个
 ///      没被封的域名重连。候选域名来自 [managedHosts],即 [kApiHosts] 加上服务端
 ///      通过 `/ips.json` 下发的域名表,赢家由 [setApiHost] 写回全局状态。
@@ -132,9 +133,17 @@ class PreferredIpConnector {
   /// 造出来的那个 HttpClient 里),而拿不到它的地方(启动流程)需要能把新列表塞进去。
   /// 与其把列表一路传下去,不如让连接器每次现读。
   ///
-  /// 注意:这张表属于**当前域名那个 Cloudflare zone**。换了域名之后旧 IP 上的证书
-  /// 对不上新域名,那时候候选只剩域名本身,靠系统 DNS。
+  /// **这张表属于 [cfHost] 那个 Cloudflare zone**:里面全是 Cloudflare 边缘节点的
+  /// 地址,只有拿 CF 那个域名做 SNI 才连得上。直连域名的路上用不着它们。
   static List<String> remote = const <String>[];
+
+  /// 优选 IP 该绑到哪个域名上 —— 服务端下发的 `cf_host`,即**走 CF 回源的那个**入口域名。
+  ///
+  /// 连 CF 边缘时要拿域名做 SNI 与证书校验,报一个 CF 不认的域名(比如直连的主用域名)
+  /// 握手会当场失败。所以这个值不靠猜 `hosts` 的顺序,由服务端明确下发。
+  ///
+  /// 空串 = 服务端没给(或那个域名已经下线),那时 [fallbackTargets] 干脆不赛跑 IP。
+  static String cfHost = '';
 
   /// 服务端下发的域名表([kApiHosts] 之外还要考虑的候选)。
   static List<String> remoteHosts = const <String>[];
@@ -177,8 +186,8 @@ class PreferredIpConnector {
     return result;
   }
 
-  /// 备用线路的候选(顺序即优先级):当前域名 → 服务端下发/内置的其它域名 →
-  /// 优选 IP。返回的每一项是 `(做 SNI 的域名, 实际连接目标)`。
+  /// 备用线路的候选(顺序即优先级):当前域名 → 服务端下发/内置的其它域名 → 优选 IP。
+  /// 返回的每一项是 `(做 SNI 的域名, 实际连接目标)`。
   ///
   /// 系统 DNS 不给当前域名留候选 —— 它是主线路,由 [connect] 单独先打一次,这样
   /// 优选 IP 不会在正常请求上抢跑或改变默认行为。
@@ -188,11 +197,21 @@ class PreferredIpConnector {
     for (final host in hosts) {
       result.add((host, host));
     }
+    // 优选 IP 池里全是 **Cloudflare 边缘节点**的地址,只能绑在走 CF 的那个域名上。
+    //
+    // 别改回 `hosts.first`:那是主用域名,而主用是**直连**的(不经过 CF)—— 拿它
+    // 当 SNI 去连 CF 的边缘 IP,CF 边缘不认这个域名,握手当场失败,那 3 个赛跑位
+    // 就白占了。
+    //
+    // 服务端没给 [cfHost] 时一个 IP 都不赛跑:宁可不试,也不要拿几个注定失败的
+    // 候选去挤掉本可以试的域名。
+    final ipHost = cfHost;
+    if (ipHost.isEmpty) return result;
     var pinned = 0;
     for (final ip in [...remote, ...pool]) {
       if (pinned >= _racePinned) break;
       if (result.any((entry) => entry.$2 == ip)) continue;
-      result.add((hosts.first, ip));
+      result.add((ipHost, ip));
       pinned++;
     }
     return result;
@@ -478,12 +497,15 @@ class PreferredIpUpdater {
     return const ServerConfig();
   }
 
-  /// 生效:换域名、换优选 IP 表、记住服务端下发的域名候选。
+  /// 生效:换域名、换优选 IP 表、换 CF 入口域名、记住服务端下发的域名候选。
   void _apply(ServerConfig config, {required String answeredBy}) {
     if (config.ips.isNotEmpty) PreferredIpConnector.remote = config.ips;
     if (config.hosts.isNotEmpty) {
       PreferredIpConnector.remoteHosts = config.hosts;
     }
+    // cf_host 同样**无条件覆盖**（和 supported 一个理由）：服务端撤掉它对 APP 说来
+    // 就是「别再用优选 IP 了」，这时必须跟着关 —— 不然会拿着一份过期的 CF 域名继续绑 IP。
+    PreferredIpConnector.cfHost = config.cfHost;
     // 支持域名表**无条件覆盖**（不是 `if (isNotEmpty)`）：服务端放开或再关掉某个平台时
     // 这份表会跟着变长变短 —— 必须整个换掉，否则被放开的平台会因为本地还留着旧的
     // 白名单而一直被拦着，用户永远看不到它已经恢复了。

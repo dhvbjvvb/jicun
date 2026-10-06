@@ -10,16 +10,24 @@ import 'secrets.dart';
 /// 重新发版**:APP 启动后从 `/ips.json` 拉一份当前可用的域名表,拉到了就用它,
 /// 拉不到就用这里编译进去的兜底。
 ///
-/// 顺序即优先级:第一个是主域名,后面的是主域名又被封时的候选。
+/// 顺序即优先级:第一个是主用域名,后面的是主用域名连不上时的候选。
 ///
-/// 兜底那一个来自 `secrets.dart`(不进版本库),仓库里留的是**占位域名** —— 这个
-/// 常量是编译进包的,仓库里写什么,公开的源码里就能被谁读到什么(和上游域名同一个
-/// 理由,见 secrets.example.dart)。本地构建时把真值填进 `lib/secrets.dart` 即可。
+/// **编译期一共两个我们自己的域名,一个都不能省:**
+///
+///   [ownApiHost]    主用 —— Cloudflare 灰云、DNS 直连源站,国内 ~50ms
+///   [escapeApiHost] 逃生 —— Cloudflare 橙云、经 CF 回源,~245ms,但抗 SNI 阻断
+///
+/// 为什么必须是**两个不同名**的域名:运营商是按 SNI 阻断域名的,那时换 IP、
+/// 加优选 IP 都没用,只有换一个没被封的域名才救得回来。如果这里只留一个
+/// (也就是把 [ownApiHost] 单独放进来),那 `_fetchWith` 在冷启动、本地还没有
+/// 缓存配置时(见 preferred_ip.dart)试的 `apiHost → kApiHosts → remoteHosts`
+/// 三条全是同一个域名 —— 域名一旦被墙,APP 连 `/ips.json` 都拉不到,也就永远
+/// 不知道还有别的域名可用,新装用户直接卡死。
 ///
 /// 注意这里只是**最初始的入口**。服务端换域名后会把新域名通过 `/ips.json` 的
 /// `hosts` 字段推下来(`PreferredIpUpdater._apply` 会 setApiHost),不用重新发版 ——
-/// 但那条路的前提是**已经连上某一个域名**,所以列表本身空不得,至少得留一个。
-const List<String> kApiHosts = <String>[ownApiHost];
+/// 但那条路的前提是**已经连上某一个域名**,所以列表本身空不得。
+const List<String> kApiHosts = <String>[ownApiHost, escapeApiHost];
 
 /// 当前生效的域名。所有请求(解析兜底、预热、更新镜像)都按它拼地址。
 ///
@@ -41,19 +49,33 @@ bool setApiHost(String host) {
 /// 把路径拼成我们服务的绝对地址,例如 `apiUrl('/parse')`。
 String apiUrl(String path) => 'https://$apiHost$path';
 
-/// 服务端下发的整个配置:可用域名 + 优选 IP。
+/// 服务端下发的整个配置:可用域名 + 优选 IP + CF 入口域名。
 ///
-/// 两个字段一起下发是有意的:它们来自同一份服务端配置,分两次请求只会在
+/// 这些字段一起下发是有意的:它们来自同一份服务端配置,分两次请求只会在
 /// 「域名刚换、IP 还是旧域名那套」这种窗口里制造不一致。
 class ServerConfig {
   const ServerConfig({
     this.hosts = const <String>[],
     this.ips = const <String>[],
     this.supported = const <String>[],
+    this.cfHost = '',
   });
 
+  /// 可用域名(顺序即优先级:第一个是主用)。
   final List<String> hosts;
+
+  /// 优选 IP 池。**全是 Cloudflare 边缘节点地址**,只能绑到 [cfHost] 上用。
   final List<String> ips;
+
+  /// 走 CF 回源的那个入口域名 —— 优选 IP 的 SNI 与证书校验目标。
+  ///
+  /// 为什么不直接拿 `hosts.first`:主用域名是**直连**的(不经过 CF),把 CF 的
+  /// 边缘 IP 绑到它上面,CF 边缘不认这个域名,握手必然失败 —— 那 3 个赛跑位就
+  /// 白占了。服务端单独下发这个字段,APP 就不用再去猜。
+  ///
+  /// 空串 = 没有可用的 CF 域名,那时干脆不赛跑 IP(见
+  /// [PreferredIpConnector.fallbackTargets])。
+  final String cfHost;
 
   /// 服务端**支持**的平台域名 —— 一份**白名单**。不在表里的域名一律本地拦掉，
   /// 一次请求都不发。
@@ -125,7 +147,19 @@ ServerConfig parseServerConfig(
     // 上限给得比 hosts 宽得多:服务端 50 个平台名下共 176 个域名，其中开启的
     // 20 个平台是 80 条（2026-09-30 实测）。
     supported: parseApiHostList(decoded['supported'], max: maxSupported),
+    // 走 CF 回源的那个入口域名。优选 IP 池里全是 Cloudflare 边缘节点地址，
+    // 只能绑在它上面 —— 见 PreferredIpConnector.fallbackTargets。
+    cfHost: _singleHost(decoded['cf_host']),
   );
+}
+
+/// 读一个只有单个值的域名字段（`cf_host` 这种）。
+///
+/// 复用域名表那套校验（长度、只认 `[a-z0-9.-]`、必须带点、拒绝 `host:port`），
+/// 认不出来就当没有。这个值会被拿去当 SNI 与证书校验的目标，不能将就。
+String _singleHost(Object? raw) {
+  final list = parseApiHostList(<Object?>[raw], max: 1);
+  return list.isEmpty ? '' : list.first;
 }
 
 /// 解析域名表。只认字母数字开头、只含 `[a-z0-9.-]`、带点的条目。
@@ -188,7 +222,17 @@ void serverConfigSelfCheck() {
   );
   assert(config.hosts.single == 'a.example.com');
   assert(config.ips.single == '1.2.3.4', 'IP 表只认能解析的条目');
+  assert(config.cfHost.isEmpty, '没下发 cf_host 就是空串');
   assert(parseServerConfig('{bad json').isEmpty, '坏 JSON 应为空配置');
+  assert(
+    parseServerConfig('{"cf_host":"cf.example.com"}').cfHost ==
+        'cf.example.com',
+    'cf_host 要认得出来',
+  );
+  assert(
+    parseServerConfig('{"cf_host":"evil.com:8443"}').cfHost.isEmpty,
+    'cf_host 同样要拒绝端口',
+  );
 
   assert(apiUrl('/parse') == 'https://$apiHost/parse');
   assert(setApiHost('  example.com ') && apiHost == 'example.com');

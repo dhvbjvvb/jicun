@@ -246,6 +246,34 @@ void main() {
       expect(covr.sublist(8), _jpeg);
     });
 
+    test('同一份歌词同时写进 ©lyr 与 ©des,而且**带时间轴**', () {
+      // 2026-10-06 真机查实:NeriPlayer 读**同一个文件**的两份拷贝,一份拿到
+      // `©des`、一份只拿到 `©lyr`;而它能滚动显示歌词的那种情况,歌词是带时间轴的
+      // (时间轴被剥掉的那些文件,它的歌词页一片空白)。所以两个字段各写一份同样的
+      // **带时间轴**的歌词,谁读哪个都能拿到(见 AudioTagInfo.lyrics)。
+      const lrc = '[00:01.00]第一句\n[00:05.00]第二句';
+      final out = writeMp4Tag(
+        _buildM4a(List<int>.filled(16, 0)),
+        const AudioTagInfo(title: '歌名', lyrics: lrc),
+        null,
+      )!;
+      final items = _ilstItems(out);
+
+      expect(utf8.decode(items['\u00A9lyr']!.sublist(8)), lrc);
+      expect(utf8.decode(items['\u00A9des']!.sublist(8)), lrc);
+    });
+
+    test('没有歌词:两个字段一个都不写', () {
+      final out = writeMp4Tag(
+        _buildM4a(List<int>.filled(16, 0)),
+        const AudioTagInfo(title: '歌名'),
+        null,
+      )!;
+      final items = _ilstItems(out);
+      expect(items['\u00A9lyr'], isNull);
+      expect(items['\u00A9des'], isNull);
+    });
+
     test('重复写不会攒出两份同名项', () {
       final once = writeMp4Tag(
         _buildM4a(List<int>.filled(16, 0)),
@@ -359,39 +387,37 @@ void main() {
       );
       expect(File('${file.path}.tagging').existsSync(), isFalse);
     });
-  });
 
-  group('lyricsPlainText', () {
-    test('服务端给的 LRC:去掉时间轴,只留正文', () {
-      // 形状照抄汽水那条真链接(见 parse_service.dart 的 lyrics 字段)。
-      const lrc =
-          '[00:00.00]作曲：Nguyễn Văn Mạnh\n'
-          '[00:02.63]街上灯火亮起寒意悄然降临\n'
-          '[02:04.71]你的目光让一切都亮了起来';
+    test('M4A 端到端:封面抓不到也照样把标题 / 作者 / 歌词写进去', () async {
+      // 这条路上唯一会碰网络的就是封面(CoverCache),而它失败是被咽掉的
+      // (见 audio_tags.dart 的 _coverBytes)—— 一张图抓不到,不该让歌词也跟着丢。
+      // 测试环境里所有 HTTP 都是 400/连不上,正好就是这个场景。
+      final dir = Directory.systemTemp.createTempSync('jicun_tag');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/a.m4a')
+        ..writeAsBytesSync(_buildM4a(List<int>.filled(64, 7)));
 
-      expect(
-        lyricsPlainText(lrc),
-        '作曲：Nguyễn Văn Mạnh\n街上灯火亮起寒意悄然降临\n你的目光让一切都亮了起来',
+      final wrote = await embedAudioTags(
+        file,
+        const AudioTagInfo(
+          title: 'Left alone',
+          artist: 'TI_C',
+          lyrics: 'You thought that you would use me',
+          coverUrl: 'https://example.invalid/cover.jpg',
+        ),
+        ext: '.m4a',
       );
-    });
 
-    test('元信息行整行丢掉,一行挂多个时间轴只留一次正文', () {
+      expect(wrote, isTrue);
+      final items = _ilstItems(file.readAsBytesSync());
+      expect(utf8.decode(items['\u00A9nam']!.sublist(8)), 'Left alone');
+      expect(utf8.decode(items['\u00A9ART']!.sublist(8)), 'TI_C');
       expect(
-        lyricsPlainText('[ar:歌手]\n[00:01][00:05]重复的一句\n[offset:0]'),
-        '重复的一句',
+        utf8.decode(items['\u00A9lyr']!.sublist(8)),
+        'You thought that you would use me',
       );
-    });
-
-    test('只有时间轴、没有正文的行(间奏)不留空行', () {
-      expect(lyricsPlainText('[00:01]第一句\n[00:08]\n[00:12]第二句'), '第一句\n第二句');
-    });
-
-    test('没有时间轴的纯文本原样返回,空行不吞', () {
-      expect(lyricsPlainText('第一段\n\n第二段\n'), '第一段\n\n第二段');
-    });
-
-    test('空串还是空串', () {
-      expect(lyricsPlainText(''), '');
+      expect(items.containsKey('covr'), isFalse, reason: '没抓到封面就不写这一项');
+      expect(File('${file.path}.tagging').existsSync(), isFalse);
     });
   });
 }

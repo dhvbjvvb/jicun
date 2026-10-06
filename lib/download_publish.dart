@@ -36,7 +36,15 @@ Future<void> _tagIfNeeded(
 
 /// 交给原生侧落盘:没自定义就走媒体库,自定义了就把文件写进那个 SAF 目录。
 /// 见 MainActivity 的 `publish`。
-Future<String?> _publishToMediaStore(DownloadItem item, File file) {
+///
+/// 交给原生侧落盘:没自定义就走媒体库,自定义了就把文件写进那个 SAF 目录。
+/// 见 MainActivity 的 `publish`。
+///
+/// **这里不再交旁挂的 `.lrc`**:非媒体文件在 Android 10+ 只能落进 `Download/` 与
+/// `Documents/`,App 不申请「所有文件访问」就写不进 `Music/`(实测五种 MediaStore
+/// 写法全被系统拒,见 MediaPublisher)。歌词改为**内嵌**进音轨(见 lib/audio_tags.dart
+/// 的 `AudioTagInfo.lyrics`)。
+Future<String?> _publishToMediaStore(DownloadItem item, File file) async {
   final target = Downloader.customStorage[item.kind];
   return Downloader._channel.invokeMethod<String>('publish', <String, String>{
     'path': file.path,

@@ -88,6 +88,7 @@ class DownloadItem {
   /// 只有 [MediaKind.audio] 用得到,别的类型一律 null —— 视频里内嵌一层音频标签
   /// 没有任何播放器会读。写失败不影响下载,见 [_tagIfNeeded]。
   final AudioTagInfo? tags;
+
 }
 
 /// 进度回调的参数。

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import 'api_host.dart';
+import 'device_identity.dart';
 import 'preferred_ip.dart';
 import 'secrets.dart';
 import 'upstream_mapping.dart';
@@ -19,13 +20,19 @@ export 'upstream_mapping.dart';
 
 /// 解析服务。
 ///
-/// 两条路:
-/// - **上游聚合接口(国内第三方服务)**:抖音 / 快手 / 微信视频号 / 豆包 先走这里。
-///   APP **直连**它,不经我们自己的服务器 —— 中间那跳只会加一个来回,而它并不
-///   参与下载(下载是手机直连 CDN),所以去掉它只有好处。
+/// 三条路:
+/// - **付费第三方聚合接口**:抖音 / 快手 / 微信视频号 / 豆包 先走这里(见
+///   [upstreamPaths])。APP **直连**它,不经我们自己的服务器 —— 中间那跳只会加
+///   一个来回,而它并不参与下载(下载是手机直连 CDN),所以去掉它只有好处。
 ///   代价是密钥必须编译进客户端(见 [upstreamApiKey]),反编译能拿到。
-/// - **media-parser**:我们自建的那个,什么链接都吃。四个平台上游失败时兜底,
+/// - **免密钥第三方**:汽水音乐先走这里(见 [publicUpstreamPaths])。同样直连,
+///   但接口是公开的、不要密钥 —— 所以那份密钥**绝不能**发给它。
+/// - **media-parser**:我们自建的那个,什么链接都吃。上面两条失败时兜底,
 ///   其余平台直接走它。
+///
+/// 还有一条**只为了补一张封面**的特殊用法:汽水音乐那条接口不给专辑封面,那种情况
+/// 会再问一次 media-parser,只取 `cover_url`(见 [_withServerCover])—— 它不算回落,
+/// 解析结论仍然是第三方那一份。
 ///
 /// 路由规则见 [parse]。
 class ParseService {
@@ -89,13 +96,14 @@ class ParseService {
   /// media-parser 兜底,不影响编译。
   static const String upstreamApiKey = upstreamServiceKey;
 
-  /// 平台 → 上游那条接口的完整地址。
+  /// 平台 → 上游那条接口的完整地址(**带我们密钥的那条**,见 [upstreamApiKey])。
   ///
   /// 上游**每个平台一条独立接口**,拿错平台的链接去问会回 422「解析参数与该平台
   /// 不匹配」,所以一条路对一个平台。
   ///
-  /// **这张表就是「先走上游」的名单**:在表里的先打上游,失败(或表里没有)才走
-  /// media-parser。加一个平台 = 这里加一行。
+  /// **这张表连同 [publicUpstreamPaths] 就是「先走第三方」的名单**:在表里的先打
+  /// 第三方,失败(或两张表里都没有)才走 media-parser。加一个平台 = 这里加一行;
+  /// 加一个**免密钥**的第三方 = [publicUpstreamPaths] 加一行。
   ///
   /// ⚠️ 这张表和「服务端支持哪些平台」是**两回事**,别混:
   ///
@@ -112,6 +120,24 @@ class ParseService {
         ParsePlatform.kuaishou: '$upstreamBase/api/ksjx',
         ParsePlatform.wechatChannels: '$upstreamBase/api/wxsph',
         ParsePlatform.doubao: '$upstreamBase/api/doubao',
+      };
+
+  /// 免密钥的第三方上游 —— 和 [upstreamPaths] 一样「先走第三方」,但接口是公开的。
+  ///
+  /// **为什么必须和 [upstreamPaths] 分开存**:两张表的差别只有一条 —— 要不要带上
+  /// [upstreamApiKey]。付费那家的接口按 key 计费,而这一家的接口谁都能直接调;
+  /// 合成一张表的话,[_request] 会把我们的密钥原样发给一个跟我们没有任何关系的
+  /// 第三方服务器。所以密钥的开关跟着**表**走,不看平台。
+  ///
+  /// 汽水音乐在这张表里。两条路的关系:
+  ///   - 它那条接口**失败/答空**时照样回落到 media-parser —— 汽水音乐本来就是
+  ///     media-parser 能解析的平台之一(见 [ParseResult.fromQishuiMusic]);
+  ///   - 它**成功**时,如果应答里没有专辑封面(只有歌手头像),还会再问一次
+  ///     media-parser 补一张真封面(见 [_withServerCover])—— 那一趟不算回落。
+  static const Map<ParsePlatform, String> publicUpstreamPaths =
+      <ParsePlatform, String>{
+        // bugpk 的公开接口:免密钥、GET、参数名 `url`(实测 2026-10-06)。
+        ParsePlatform.qishuiMusic: 'https://api.bugpk.com/api/qsmusic',
       };
 
   /// 预热地址。由 nginx 直接返回 204,不走上游、不占解析限流额度,
@@ -160,8 +186,8 @@ class ParseService {
   /// 解析一条分享链接。
   ///
   /// 路由:
-  /// - 在 [upstreamPaths] 里的平台(抖音 / 快手 / 微信视频号 / 豆包)→ 先打上游
-  ///   对应平台那条路;
+  /// - 在 [upstreamPaths] 或 [publicUpstreamPaths] 里的平台 → 先打该平台那条第三方
+  ///   接口(前者带我们的密钥,后者是公开接口、不带);
   /// - 其他平台 → 只用 media-parser。
   ///
   /// **上游那一趟只要没拿到能用的结果就回落**,四种情况都算:
@@ -180,7 +206,12 @@ class ParseService {
   /// 回落是**串行**的,不是抢跑:两个上游都可能收费,抢跑等于每次都付两份钱。
   Future<ParseResult> parse(String shareUrl) async {
     final platform = detectPlatform(shareUrl);
-    final upstream = upstreamPaths[platform];
+    // 「先走第三方」的名单有两张:付费那家带密钥,公开那家不带。一个平台只会落在
+    // 其中一张里,所以两张合起来查一次就够了。
+    final upstream = upstreamPaths[platform] ?? publicUpstreamPaths[platform];
+    // 密钥跟着**表**走,不看平台:打进 [publicUpstreamPaths] 的接口是公开的,给它
+    // 发我们的密钥等于把计费凭据白送出去。
+    final withApiKey = upstreamPaths.containsKey(platform);
 
     // 不在服务端下发的支持名单里就在本地拦掉，一次请求都不发 ——
     // 但**只对本来就要打到我们服务器的平台**（[upstream] 为空）。
@@ -207,12 +238,21 @@ class ParseService {
           upstream,
           shareUrl,
           _upstreamTimeout,
+          platform: platform,
           fromUpstream: true,
-          platformHint: platform.label,
+          apiKey: withApiKey ? upstreamApiKey : null,
         );
         if (result.hasVideo || result.hasImages || result.hasAudio) {
           lastRoute = 'upstream:${platform.name}';
-          return result;
+          // 汽水音乐那条接口不给专辑封面(只给歌手头像):这一位就是它置的,
+          // 拿它去我们自己的服务器补一次真封面 —— **结论仍然算第三方的**,
+          // 只是多一张图(见 [_withServerCover])。
+          if (!result.coverFromFallback) return result;
+          final covered = await _withServerCover(result, shareUrl);
+          lastRoute = covered.coverFromFallback
+              ? '$lastRoute+cover-miss'
+              : '$lastRoute+cover';
+          return covered;
         }
         lastRoute = 'upstream:${platform.name}-empty';
       } on ParseException catch (error) {
@@ -238,27 +278,103 @@ class ParseService {
     return _request(endpoint, shareUrl, _timeout);
   }
 
-  /// 打一个上游,把应答翻成 [ParseResult]。
+  /// 补一张**真专辑封面**。
   ///
-  /// [fromUpstream] 为真表示这是上游那条路,它的应答结构是另一套(见
-  /// [ParseResult.fromUpstream]),而且要带上密钥头。
+  /// 为什么需要:汽水音乐那条第三方接口真的不给专辑封面,只给歌手头像
+  /// (见 [ParseResult.coverFromFallback]),而这条链接我们的服务器解析得出来 ——
+  /// media-parser 回的 `cover_url` 就是那张 375x375 的专辑封面图。封面不是可有可无
+  /// 的东西:它要内嵌进下载下来的音频、还要当媒体卡的缩略图(见 lib/audio_tags.dart
+  /// 的 `AudioTagInfo.coverUrl`)。
+  ///
+  /// 三条约束:
+  /// - **只取封面**,其余字段一个都不动 —— 这一趟的解析结论仍然是第三方那一份;
+  /// - **网络失败要重试一次**(见 [_coverAttempts]),但失败本身不再往上抛:
+  ///   封面是加分项,补不到就返回原样的结果,卡片照样能用;
+  /// - 超时给得短(见 [_coverTimeout]):这一步在解析**成功之后**,用户已经在看卡片了,
+  ///   这时候让一张封面把整条链路拖住是划不来的。
+  Future<ParseResult> _withServerCover(
+    ParseResult result,
+    String shareUrl,
+  ) async {
+    for (var attempt = 1; attempt <= _coverAttempts; attempt++) {
+      try {
+        final source = await _request(endpoint, shareUrl, _coverTimeout);
+        final cover = source.coverUrl;
+        if (cover == null || cover.isEmpty) {
+          // 服务端答得清清楚楚:它这条链接也没封面。再问一次不会有别的答案。
+          if (kDebugMode) debugPrint('补封面:服务端也没给封面($shareUrl)');
+          return result;
+        }
+        return result.withCover(cover);
+      } on ParseException catch (error) {
+        // 留着这行日志:`cover_url` 为 null 时,靠它才能分清「服务端没有」还是
+        // 「这一趟网络没成」—— 两种情况的处理完全不同(前者只能认命)。
+        if (kDebugMode) {
+          debugPrint('补封面第 $attempt/$_coverAttempts 次失败:$error($shareUrl)');
+        }
+      }
+    }
+    return result;
+  }
+
+  /// 补封面那次请求的超时。见 [_withServerCover]。
+  static const Duration _coverTimeout = Duration(seconds: 8);
+
+  /// 补封面那趟最多试几次。
+  ///
+  /// **为什么是两次**:这条路会**偶发**失败,失败被咽掉之后那首歌就永远没封面
+  /// 了(卡片空白,下载下来的文件也没有 `covr`)。2026-10-06 用户在手机上下了
+  /// 三首歌,同一份包、前后一分钟内,两条补上了、中间那条没补上
+  /// (`shared_prefs` 里那条记录的 `cover_url` 是 null);同一天在 PC 上对这两条
+  /// 链接真网络各打三次,六次全成、单次 1.2 秒。所以不是逻辑错,是那一下网络
+  /// 没成 —— 再给一次机会就够了,不值得为它把卡片拖上十几秒。
+  static const int _coverAttempts = 2;
+
+  /// 打一个第三方接口(或者兜底的那条),把应答翻成 [ParseResult]。
+  ///
+  /// [fromUpstream] 为真表示这是**第三方**那条路:应答结构是另一套(见
+  /// [ParseResult.fromUpstream]),而且它失败之后还有 media-parser 兜底。
+  /// 带不带密钥看 [apiKey] —— 传 null 就是一个字节都不发(公开接口,见
+  /// [publicUpstreamPaths])。
+  ///
+  /// [platform] 有两个用处:决定用哪个映射器(汽水音乐那条接口回的是一首歌,走
+  /// [ParseResult.fromQishuiMusic]),以及应答里没写平台名时兜一个中文名给卡片。
   Future<ParseResult> _request(
     String endpoint,
     String shareUrl,
     Duration timeout, {
+    ParsePlatform? platform,
     bool fromUpstream = false,
-    String? platformHint,
+    String? apiKey,
   }) async {
     final uri = Uri.parse(endpoint).replace(queryParameters: {'url': shareUrl});
-    // 只有上游那条路要密钥:media-parser 的密钥由我们自己在 nginx 上注入,
-    // 客户端手里没有(也不该有)。
-    final headers = fromUpstream
-        ? const <String, String>{'X-API-Key': upstreamApiKey}
-        : null;
+    // 密钥**只发给付费那家**:media-parser 的密钥由我们自己在 nginx 上注入,
+    // 客户端手里没有(也不该有);公开的第三方更不该拿到它。
+    var headers = apiKey == null
+        ? null
+        : <String, String>{'X-API-Key': apiKey};
+    // 设备签名头(硬件密钥证明,见 lib/device_identity.dart)**只加给我们自己的端点**。
+    // endpoint 由 apiUrl(...) 拼出来就算我们的;第三方上游那一批地址一律不加 ——
+    // 那四个头里有 device_id,漏给第三方等于把「这台设备是谁」白送出去,和密钥同一条纪律。
+    if (endpoint.startsWith(apiUrl(''))) {
+      // 首次请求可能赶在启动那次身份登记办完之前 —— **用户一进来就粘贴解析**就是这种情形。
+      // 那一次会不带签名头,在 enforce 下被服务端 403(线上实测:第一次粘上去必失败,
+      // 把最后一个字符删掉重打一遍就好了)。等一次已经在跑的登记就行,已经有身份时不耽搁。
+      await awaitDeviceIdentity();
+      // 查询串传的是**原始那一整段**(`uri.query`):签名里含它的 sha256,而解码过的
+      // 参数表和真正发出去的编码可能不一样(见 deviceHeaders 的说明)。
+      final device = await deviceHeaders('GET', uri.path, uri.query);
+      if (device.isNotEmpty) {
+        headers = <String, String>{...?headers, ...device};
+      }
+    }
     Future<http.Response> retryWithSystemClient() async {
       final fallback = http.Client();
       try {
-        return await fallback.get(uri).timeout(timeout);
+        // 这条兜底的标准连接也要带上同一份头:签名盖的是「方法 + 路径 + 查询串」,
+        // 换个 client 重发不会让它失效。少带了的话这一趟在服务端就是一次**未签名**请求
+        // (现在只记录,但日志里会凭空多出一条「没签名」)。
+        return await fallback.get(uri, headers: headers).timeout(timeout);
       } finally {
         fallback.close();
       }
@@ -270,7 +386,7 @@ class ParseService {
           ? await _client.get(uri).timeout(timeout)
           : await _client.get(uri, headers: headers).timeout(timeout);
     } on TimeoutException catch (error, stack) {
-      if (headers == null && _client is IOClient) {
+      if (!fromUpstream && _client is IOClient) {
         try {
           response = await retryWithSystemClient();
         } catch (fallbackError, fallbackStack) {
@@ -287,8 +403,8 @@ class ParseService {
       }
     } catch (error, stack) {
       // 移动网络对 Cloudflare 某些优选 IP 可能不可达,而系统 DNS 的地址是通的。
-      // 兜底接口只重试一次标准连接;上游接口保持原有行为,不重复请求。
-      if (headers == null && _client is IOClient) {
+      // 兜底接口只重试一次标准连接;第三方接口(付费的和公开的)保持原有行为,不重复请求。
+      if (!fromUpstream && _client is IOClient) {
         try {
           response = await retryWithSystemClient();
         } catch (fallbackError, fallbackStack) {
@@ -338,12 +454,15 @@ class ParseService {
     }
 
     if (_isSuccess(body) && _dataOf(body) is Map) {
-      // 明文地址在这里就升成 https —— 这是两条路共用的唯一入口,升一次两条都干净。
+      // 明文地址在这里就升成 https —— 这是所有路共用的唯一入口,升一次全都干净。
       // 不升的话 Android 会拦(禁明文),下载和预览都会失败;原因见 secureMediaUrls。
       final data = secureMediaUrls(_dataOf(body)) as Map<String, dynamic>;
-      return fromUpstream
-          ? ParseResult.fromUpstream(data, platform: platformHint ?? '')
-          : ParseResult.fromJson(data);
+      if (!fromUpstream) return ParseResult.fromJson(data);
+      // 汽水音乐那条接口回的是**一首歌**:根上那条地址有可能就是音频流本身,所以
+      // 它有自己一套映射(见 [ParseResult.fromQishuiMusic])。其余第三方共用一套结构。
+      return platform == ParsePlatform.qishuiMusic
+          ? ParseResult.fromQishuiMusic(data)
+          : ParseResult.fromUpstream(data, platform: platform?.label ?? '');
     }
 
     // 关键:上游解析失败时用的是 HTTP 400 + retdesc,不是 200 + succ:false。
@@ -395,6 +514,9 @@ enum ParsePlatform {
   kuaishou('快手'),
   doubao('豆包'),
   wechatChannels('微信视频号'),
+  /// 汽水音乐。**它有自己一条免密钥的第三方接口**(见
+  /// [ParseService.publicUpstreamPaths]),不是走付费那家。
+  qishuiMusic('汽水音乐'),
 
   /// 认不出/不在名单里。走 media-parser。
   unknown('');
@@ -412,6 +534,13 @@ enum ParsePlatform {
 /// 是抖音的(用户转发别人的文案很常见)。域名认不出就交给兜底那条路,不会错——
 /// media-parser 什么链接都吃。
 const Map<String, ParsePlatform> _kPlatformHosts = <String, ParsePlatform>{
+  // ⚠️ 汽水音乐**必须排在 douyin.com 前面**:它的分享短链是 `qishui.douyin.com/s/…`,
+  // 而 [detectPlatform] 认子域(见下),顺序反了它就被当成抖音、送去抖音那条上游了。
+  // 实测 2026-10-06:`https://qishui.douyin.com/s/…` 跳转后落在
+  // `music.douyin.com/qishui/share/{track,album,playlist,mv,ugc_video}?…`。
+  'qishui.douyin.com': ParsePlatform.qishuiMusic,
+  // 汽水音乐网页版(www.qishui.com)。用户从浏览器里复制出来的就是这一类。
+  'qishui.com': ParsePlatform.qishuiMusic,
   // 抖音:主站、短链、以及它的图集/去水印域名
   'douyin.com': ParsePlatform.douyin,
   'iesdouyin.com': ParsePlatform.douyin,
@@ -434,8 +563,14 @@ const Map<String, ParsePlatform> _kPlatformHosts = <String, ParsePlatform>{
 ///
 /// 大小写、子域名都归一到同一个平台:`v.douyin.com` → 抖音。
 ParsePlatform detectPlatform(String url) {
-  final host = Uri.tryParse(url.trim())?.host.toLowerCase() ?? '';
+  final uri = Uri.tryParse(url.trim());
+  final host = uri?.host.toLowerCase() ?? '';
   if (host.isEmpty) return ParsePlatform.unknown;
+  // 汽水音乐的分享页挂在 `music.douyin.com/qishui/…` 上(短链跳转后的地址就是它),
+  // 而那个域名整体是抖音的 —— 这个只能连路径一起看,不然就得把整个域名让出去。
+  if (host == 'music.douyin.com' && (uri?.path.startsWith('/qishui') ?? false)) {
+    return ParsePlatform.qishuiMusic;
+  }
   for (final entry in _kPlatformHosts.entries) {
     if (host == entry.key || host.endsWith('.${entry.key}')) {
       return entry.value;

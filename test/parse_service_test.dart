@@ -1,13 +1,20 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jicun/api_host.dart';
+import 'package:jicun/device_identity.dart';
 import 'package:jicun/downloader.dart';
 import 'package:jicun/parse_service.dart';
+import 'package:jicun/ui/prefs.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  // 设备签名头那两条用例要挂假的原生通道(见 lib/device_identity.dart)。
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('ParseResult.fromJson', () {
     test('取到标题、作者、视频、封面、音频', () {
       final result = ParseResult.fromJson({
@@ -650,6 +657,259 @@ void main() {
       );
     });
   });
+
+  // 硬件密钥证明那份签名头(X-Jicun-*)的去向。**这组里最要紧的是第一条**:
+  // 付费上游和公开上游都是第三方,我们的 device_id 一个字节都不能漏过去。
+  group('设备签名头只加给我们自己的端点', () {
+    /// 一条「抖音」链接 —— 它在 upstreamPaths 里,所以第一趟一定打第三方。
+    const douyin = 'https://v.douyin.com/abc/';
+
+    /// 请求头上所有 X-Jicun-*(大小写不敏感)。
+    List<String> deviceHeadersOf(http.BaseRequest request) => request.headers.keys
+        .where((key) => key.toLowerCase().startsWith('x-jicun-'))
+        .toList();
+
+    /// 把设备「注册」好:落盘 device_id、原生确认密钥还在,然后走一遍**真正的**
+    /// [ensureDeviceIdentity] —— 内存里那份 id 只有它会填(见 lib/device_identity.dart),
+    /// 而签名头只认内存那一份。每次签名调一次 [onSign]。
+    /// 不注册的话「第三方不带签名头」会因为根本没头而假绿。
+    Future<void> stubRegisteredDevice({void Function()? onSign}) async {
+      const id = 'cmqGRgCA3vR2TBI8-GYEbm';
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        kPrefsDeviceId: id,
+        // 版本也要写当前这个:不写会走「升级补登记」那条路,而那条路用的是**真实**
+        // client(deviceClientFactory 默认值)—— 单元用例不该打线上接口。
+        kPrefsDeviceVersion: '3.2.8+18',
+      });
+      resetDeviceIdentityCache();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel(kDeviceChannel),
+            (call) async {
+              if (call.method == 'sign') {
+                onSign?.call();
+                return 'MEUCIQfakeSignature==';
+              }
+              if (call.method == 'deviceId') return id;
+              return null;
+            },
+          );
+      addTearDown(
+        () =>
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+                .setMockMethodCallHandler(
+                  const MethodChannel(kDeviceChannel),
+                  null,
+                ),
+      );
+      // 幂等那条路:落盘的 id 和原生那边对得上 → 一次网络都不发,只是把 id 放进内存。
+      await ensureDeviceIdentity();
+    }
+
+    test('第三方上游一个 X-Jicun-* 都不带,我们自己的 /parse 才带', () async {
+      var signCalls = 0;
+      await stubRegisteredDevice(onSign: () => signCalls++);
+      final seen = <http.Request>[];
+      final service = ParseService(
+        client: MockClient((request) async {
+          seen.add(request);
+          // 上游挂了(422):这一趟只是个引子,用来把「第三方」和「我们自己」两条路
+          // 都走一遍。
+          if (request.url.host == Uri.parse(ParseService.upstreamBase).host) {
+            return http.Response(
+              jsonEncode({'error': '解析参数与该平台不匹配'}),
+              422,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'succ': true,
+                'retcode': 200,
+                'data': {
+                  'title': '接口测试',
+                  'video_url': 'https://cdn.example/v.mp4',
+                },
+              }),
+            ),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      final result = await service.parse(douyin);
+
+      expect(seen, hasLength(2));
+      // 第一趟是第三方直连(付费上游):那四个头里有 device_id,漏过去就是泄漏身份。
+      expect(seen.first.url.host, Uri.parse(ParseService.upstreamBase).host);
+      expect(
+        deviceHeadersOf(seen.first),
+        isEmpty,
+        reason: '第三方上游绝不能拿到 X-Jicun-*',
+      );
+      // 第二趟是兜底的 media-parser(我们自己的域名):四个头都要在。
+      expect(seen.last.url.path, '/parse');
+      expect(seen.last.url.host, Uri.parse(ParseService.endpoint).host);
+      expect(deviceHeadersOf(seen.last), hasLength(4));
+      expect(
+        seen.last.headers[kDeviceHeaderName],
+        'cmqGRgCA3vR2TBI8-GYEbm',
+      );
+      expect(signCalls, 1, reason: '只有我们自己那趟才需要签');
+      expect(result.hasVideo, isTrue);
+    });
+
+    test('首次请求赶在登记办完之前:照样带上签名头(线上「第一次粘贴必失败」那条)', () async {
+      // 还原线上现场:启动那次登记还在跑(它要过网络),用户已经粘上链接点了解析。
+      // 修之前这一趟一个 X-Jicun-* 都不带,服务端在 enforce 下直接 403
+      // ——「本接口仅供官方APP使用,请更新到最新版本」;把最后一个字符删掉重打一遍就好了,
+      // 因为那会儿登记早办完了。修法:发请求前等一次**正在跑**的登记(见 awaitDeviceIdentity)。
+      const id = 'cmqGRgCA3vR2TBI8-GYEbm';
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      resetDeviceIdentityCache();
+      var signCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel(kDeviceChannel),
+            (call) async {
+              switch (call.method) {
+                case 'sign':
+                  signCalls++;
+                  return 'MEUCIQfakeSignature==';
+                case 'createKey':
+                  return <String, Object?>{
+                    'deviceId': id,
+                    'attested': true,
+                    'certificateChain': <String>['LEAFCERT'],
+                  };
+                case 'androidApi':
+                  return 34;
+                default:
+                  return null;
+              }
+            },
+          );
+      addTearDown(
+        () =>
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+                .setMockMethodCallHandler(
+                  const MethodChannel(kDeviceChannel),
+                  null,
+                ),
+      );
+      // 登记的应答故意慢一点:保证解析请求确实是在「登记还没办完」的那一刻发出去的。
+      deviceClientFactory = () => MockClient((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        if (request.url.path == '/device/challenge') {
+          return http.Response(
+            jsonEncode({
+              'succ': true,
+              'data': {'nonce': 'vvHWjItnnZGw9ZKAKK3sZL0H'},
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'succ': true,
+            'data': {'device_id': id},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      addTearDown(() => deviceClientFactory = defaultDeviceClient);
+
+      // 不 await:这就是启动时点的那把火。
+      final registration = ensureDeviceIdentity();
+      final seen = <http.Request>[];
+      final service = ParseService(
+        client: MockClient((request) async {
+          seen.add(request);
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'succ': true,
+                'retcode': 200,
+                'data': {
+                  'title': '接口测试',
+                  'video_url': 'https://cdn.example/v.mp4',
+                },
+              }),
+            ),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      // 这个链接不认识平台 → 直奔我们自己的 /parse(不经过任何第三方上游)。
+      await service.parse('https://example.com/share/123');
+      await registration;
+
+      expect(seen, hasLength(1), reason: '没认出平台就是直连我们自己,不该有第二趟');
+      expect(seen.single.url.host, Uri.parse(ParseService.endpoint).host);
+      expect(
+        deviceHeadersOf(seen.single),
+        hasLength(4),
+        reason: '不许因为「登记还没办完」就把这一趟发成未签名请求',
+      );
+      expect(signCalls, 1);
+    });
+
+    test('公开的第三方上游同样不带(它连密钥都没有,更不该有身份)', () async {
+      await stubRegisteredDevice();
+      final seen = <http.Request>[];
+      final service = ParseService(
+        client: MockClient((request) async {
+          seen.add(request);
+          return http.Response(
+            jsonEncode({'code': 400, 'message': '暂时无法解析'}),
+            400,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      // 汽水音乐在 publicUpstreamPaths 里:**先**直连那个公开接口(第三方),
+      // 失败之后才回落我们自己的 /parse(那一趟带签名头是我们自己的事)。
+      await expectLater(
+        service.parse('https://qishui.douyin.com/s/abc/'),
+        throwsA(isA<ParseException>()),
+      );
+
+      final publicHost = Uri.parse(
+        ParseService.publicUpstreamPaths[ParsePlatform.qishuiMusic]!,
+      ).host;
+      expect(seen.first.url.host, publicHost);
+      expect(
+        deviceHeadersOf(seen.first),
+        isEmpty,
+        reason: '公开接口是第三方,device_id 不能给它',
+      );
+    });
+
+    test('/ping 预热不带签名头', () async {
+      await stubRegisteredDevice();
+      final seen = <http.Request>[];
+      final service = ParseService(
+        client: MockClient((request) async {
+          seen.add(request);
+          return http.Response('', 204);
+        }),
+      );
+
+      service.warmUp();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(seen.single.url.path, '/ping');
+      expect(deviceHeadersOf(seen.single), isEmpty);
+    });
+  });
+
 
   group('safeFileName', () {
     test('清掉路径分隔符和非法字符,保留中文', () {

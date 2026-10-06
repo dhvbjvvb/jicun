@@ -423,6 +423,229 @@ bool _isHlsPlaylist(String url) {
   return path.toLowerCase().endsWith('.m3u8');
 }
 
+/// 音频文件的扩展名。汽水音乐那条接口回的歌就是这几类。
+///
+/// 只用来判断「根上那条地址到底是不是一首歌」(见 [_isAudioStreamOnly])——
+/// 真去读容器格式的是下载和封面那条线(见 lib/audio_tags.dart)。
+const Set<String> _kAudioExtensions = <String>{
+  'mp3',
+  'm4a',
+  'aac',
+  'flac',
+  'wav',
+  'ogg',
+  'opus',
+  'ape',
+  'wma',
+};
+
+/// 视频文件的扩展名(含 HLS 播放列表 `.m3u8`)。
+const Set<String> _kVideoExtensions = <String>{
+  'mp4',
+  'mov',
+  'mkv',
+  'webm',
+  'avi',
+  'flv',
+  'ts',
+  'm3u8',
+};
+
+/// 应答自己写的 `type` 是这几个时,就当它是一条音轨。
+const Set<String> _kAudioTypes = <String>{'music', 'audio', 'song', 'track'};
+
+/// 地址的扩展名,**认不出来返回空串**。
+///
+/// 和 lib/pages/preview.dart 的 `urlExt` 是一回事,但那个函数要的是「下载时写哪个
+/// 后缀」(认不出就兜一个 `mp4`),这里要的是「到底认没认出来」—— 认不出是第三种
+/// 情况,不能和 mp3 混为一谈(见 [_isAudioStreamOnly])。
+String _extensionOf(String url) {
+  final path = Uri.tryParse(url)?.path ?? url;
+  final dot = path.lastIndexOf('.');
+  if (dot < 0) return '';
+  final ext = path.substring(dot + 1).toLowerCase();
+  return RegExp(r'^[a-z0-9]{2,5}$').hasMatch(ext) ? ext : '';
+}
+
+/// 这条地址是不是**音频流本身**。
+///
+/// 三个判据,顺序即优先级:
+///   1. **CDN 自己在 query 里写的 MIME**:汽水音乐那条实测
+///      `…&mime_type=audio_mp4`(音轨)/ `mime_type=video_mp4`(MV),而它的路径
+///      是个不带后缀的 ID —— 这一条比扩展名还准;
+///   2. 扩展名:`mp4` / `.m3u8` 一律当视频,`mp3` / `m4a` 一律当音频;
+///   3. 两边都认不出才看**元数据/应答自己写的类型**:`video_meta.vtype`(`m4a`)、
+///      `codec_type`(`aac`)或根上的 `type`(见 [_qishuiStreamKind])。
+///
+/// **三条都认不出时一律当视频**:视频是保守的那一边 —— 判成音频而视频卡不出现,
+/// 用户就完全拿不到那一条流了(见 [ParseResult.fromQishuiMusic])。
+bool _isAudioStreamOnly(String url, Object? type) {
+  final mime = Uri.tryParse(url)?.queryParameters['mime_type'] ?? '';
+  if (mime.contains('audio')) return true;
+  if (mime.contains('video')) return false;
+
+  final ext = _extensionOf(url);
+  if (_kVideoExtensions.contains(ext)) return false;
+  if (_kAudioExtensions.contains(ext)) return true;
+
+  return type is String && _kAudioTypes.contains(type.trim().toLowerCase());
+}
+
+/// 这份应答里有没有**能下的视频**:`video_backup[]` 里出现一条非音频地址就算有。
+///
+/// `.m3u8` 不算:下载器是一条 Range 一条连接地收字节、不做 HLS 分片拼接
+/// (见 [_qualityFromEntry]),上游列出来的播放列表本来就会被丢掉 —— 拿它把整份
+/// 应答判成「MV」只会让一首歌顶着一张视频卡。
+///
+/// 图集(`images`)和实况图(`live_photo`)也不算:一首歌照样可以带封面图。
+bool _hasVideoStream(Map<String, dynamic> data) {
+  final backup = data['video_backup'];
+  if (backup is! List) return false;
+  for (final item in backup) {
+    final url = switch (item) {
+      String text => ParseResult._strOrNull(text),
+      Map map => ParseResult._strOrNull(
+        map['url'] ?? map['play_url'] ?? map['video_url'],
+      ),
+      _ => null,
+    };
+    if (url == null || _isHlsPlaylist(url)) continue;
+    if (!_kAudioExtensions.contains(_extensionOf(url))) return true;
+  }
+  return false;
+}
+
+/// 汽水音乐那条接口**自己的**应答结构(`/api/qsmusic` 实测 2026-10-06)。
+///
+/// 判据用的是这首歌这条接口独有的字段:`video_meta` / `albumname` / `artistsname` /
+/// `artistsmedium_avatar_url` —— 同站 `/api/douyin` 那套一个都没有(它用 `type`、
+/// `author{}`、`video_backup[]`)。
+///
+/// **为什么不能只看 [_isUpstreamFormat]**:那套结构的标记里有一个 `cover`,而这条接口
+/// 哪天补上一张真封面,一份音乐应答就会被当成那套结构读 —— 歌名在 `albumname` 里,
+/// 那套读法读 `title`,结果是一张没有标题的卡片(实测踩到,见 [ParseResult.fromQishuiMusic])。
+bool _isQishuiShape(Map<String, dynamic> data) {
+  const keys = <String>[
+    'video_meta',
+    'albumname',
+    'artistsname',
+    'artistsmedium_avatar_url',
+  ];
+  for (final key in keys) {
+    if (data.containsKey(key)) return true;
+  }
+  return false;
+}
+
+/// 汽水音乐那条应答里「这条流是什么」——喂给 [_isAudioStreamOnly] 当第三判据。
+///
+/// 它把类型放在 `video_meta` 里(`vtype` = `m4a` / `mp4`,`codec_type` = `aac`),
+/// 根上**没有** `type` 字段(那是同站 `/api/douyin` 那套的写法)。
+String _qishuiStreamKind(Map<String, dynamic> data) {
+  final meta = data['video_meta'];
+  if (meta is Map) {
+    final vtype = ParseResult._strOrNull(meta['vtype']);
+    if (vtype != null) return vtype;
+    final codec = ParseResult._strOrNull(meta['codec_type']);
+    if (codec != null) return codec;
+  }
+  return ParseResult._str(data['type']);
+}
+
+/// 汽水音乐的歌名。
+///
+/// `title` 优先(它哪天加了就用),实测这条回的是 `albumname` —— 而那条**就是歌名**:
+/// 同一条链接的分享页 `og:title` 是「《Left alone》@汽水音乐」,与 `albumname` 一字不差。
+String _qishuiTitle(Map<String, dynamic> data) =>
+    ParseResult._strOrNull(data['title']) ??
+    ParseResult._str(data['albumname']);
+
+/// 汽水音乐的歌手名。实测在 `artistsname` 里(一个字符串)。
+///
+/// 兜底读 `author`:万一它哪天换成同站 `/api/douyin` 那套(`author{name}`)也认。
+String _qishuiArtist(Map<String, dynamic> data) {
+  final direct = ParseResult._strOrNull(data['artistsname']);
+  if (direct != null) return direct;
+  final author = data['author'];
+  if (author is Map) {
+    return ParseResult._str(author['name'] ?? author['nickname']);
+  }
+  return ParseResult._str(author);
+}
+
+/// 汽水音乐那条应答里的**真封面**。没有就是 null。
+///
+/// `cover` / `cover_url` 都收 —— 只是实测这条接口**一个都不给**(2026-10-06 那条
+/// 单曲的应答里没有封面字段),所以调用方会退回 [_qishuiAvatar]。
+String? _qishuiCover(Map<String, dynamic> data) =>
+    ParseResult._strOrNull(data['cover']) ??
+    ParseResult._strOrNull(data['cover_url']);
+
+/// 逐字歌词的时标:整行的是 `[1880,3710]`(起始 + 时长,两个都是毫秒),每个字/词的是
+/// `<240,260,0>`(相对行首的偏移 + 时长)。
+///
+/// 行级那个**必须捕获数字**:转 LRC 时要用的是起始毫秒(见 [_qishuiLyrics])。
+final RegExp _kKaraokeLineTag = RegExp(r'^\[(\d+),(\d+)\]\s*');
+final RegExp _kKaraokeWordTag = RegExp(r'<\d+,\d+,\d+>');
+/// 拿它顶上是因为封面要用在**音频标签和媒体卡**上(见 lib/audio_tags.dart 的
+/// `AudioTagInfo.coverUrl`):有一张总比空白强,而它确实是这首歌的歌手。但它不是专辑
+/// 封面 —— 所以用了它就把 [ParseResult.coverFromFallback] 置位,让服务端有机会去
+/// 我们自己的服务器补一张真的(见 [ParseResult.withCover])。
+String? _qishuiAvatar(Map<String, dynamic> data) {
+  final avatars = data['artistsmedium_avatar_url'];
+  if (avatars is List) {
+    for (final item in avatars) {
+      final url = ParseResult._strOrNull(item);
+      if (url != null) return url;
+    }
+  }
+  return null;
+}
+
+
+/// 汽水音乐的歌词 → **标准 LRC**。
+///
+/// 实测回的是**逐字**格式:
+/// `[1880,3710]<0,240,0>You <240,260,0>thought <500,220,0>that …`
+/// —— 行首是「这一行的起始毫秒 + 时长」,词上挂的是「相对行首的偏移 + 时长」。
+///
+/// 这里转成 `[00:01.88]You thought that you would use me` 这种**行级 LRC**,而不是
+  /// 这里转成 `[00:01.88]You thought that you would use me` 这种**行级 LRC**,而不是
+  /// 纯文本:落进音频文件的那两份歌词(`©lyr` 与 `©des`)都要**带时间轴** —— 播放器
+  /// 认哪个字段各不相同,而它能滚动显示歌词的那种情况,歌词都是带时间轴的(见
+  /// lib/audio_tags.dart 的 `AudioTagInfo.lyrics`)。
+///
+/// 逐字的偏移在行级 LRC 里没地方放,丢掉 —— 那是卡拉OK式的高亮,主流播放器不吃。
+/// 落不到时标的行(本来就没有 `[起始,时长]`)原样保留成纯文本,不硬编时间轴。
+String _qishuiLyrics(Map<String, dynamic> data) {
+  final raw =
+      ParseResult._strOrNull(data['lyric']) ??
+      ParseResult._strOrNull(data['lyrics']);
+  if (raw == null) return '';
+  final lines = <String>[];
+  for (final line in raw.split('\n')) {
+    final match = _kKaraokeLineTag.firstMatch(line);
+    final text = line.replaceAll(_kKaraokeWordTag, '').trim();
+    final body = text.substring(match == null ? 0 : match.end).trim();
+    // 只有休止符的一行(剥完是空的)丢掉;原本就是空行的留着 —— 那是段落间隔。
+    if (body.isEmpty && line.trim().isNotEmpty) continue;
+    final start = match == null ? null : int.tryParse(match.group(1)!);
+    lines.add(start == null ? body : '[${_lrcTimestamp(start)}]$body');
+  }
+  return lines.join('\n');
+}
+
+/// 毫秒 → LRC 的 `mm:ss.xx`(分钟不补到两位以上会超出 `[mm:ss]` 两段的写法)。
+String _lrcTimestamp(int ms) {
+  final total = ms < 0 ? 0 : ms;
+  final minutes = total ~/ 60000;
+  final seconds = (total % 60000) ~/ 1000;
+  final cents = (total % 1000) ~/ 10;
+  return '${minutes.toString().padLeft(2, '0')}:'
+      '${seconds.toString().padLeft(2, '0')}.'
+      '${cents.toString().padLeft(2, '0')}';
+}
+
 /// 一条视频。合集(`video_list`)里每一项一条。
 class VideoItem {
   const VideoItem({
@@ -477,6 +700,7 @@ class ParseResult {
     this.livePhotos = const [],
     this.primaryQualities = const [],
     this.lyrics = '',
+    this.coverFromFallback = false,
   });
 
   factory ParseResult.fromJson(Map<String, dynamic> json) {
@@ -634,6 +858,81 @@ class ParseResult {
     );
   }
 
+
+  /// 汽水音乐那条第三方接口(bugpk 的 `/api/qsmusic`,免密钥)的应答 → 模型。
+  ///
+  /// 实测一条真实分享链接(`https://qishui.douyin.com/s/iXqRAg7Q/`,2026-10-06),
+  /// 成功应答长这样 —— **和同站 `/api/douyin` 那套完全不是一回事**,别照搬:
+  /// ```json
+  /// {"code":200,"msg":"success","data":{
+  ///   "url":"https://v11-luna.douyinvod.com/…/?…&mime_type=audio_mp4",  // 流本身
+  ///   "video_meta":{"quality":"highest","vtype":"m4a","bitrate":257535,
+  ///                 "codec_type":"aac","size":4011636,"audio_sample_rate":44100},
+  ///   "lyric":"[1880,3710]<0,240,0>You <240,260,0>thought <500,220,0>that …",
+  ///   "albumname":"Left alone","artistsname":"TI_C","artistsid":2344610331113192,
+  ///   "artistsmedium_avatar_url":["https://p3.douyinpic.com/…720x720….jpeg", …]
+  /// }}
+  /// ```
+  /// 三个要点:
+  /// - **没有 `title` / `cover` / `author` / `type`**:歌名在 `albumname`(实测这条
+  ///   就是歌名 —— 分享页 `og:title` 正是「《Left alone》@汽水音乐」),歌手在
+  ///   `artistsname`,封面只有歌手头像 `artistsmedium_avatar_url`(见 [_qishuiCover]);
+  /// - **根上那条 `url` 是音频流**(`mime_type=audio_mp4`、`vtype=m4a`、`codec_type=aac`),
+  ///   所以不能按 [ParseResult.fromUpstream] 那套「根上的 `url` 一律当视频」读:那样
+  ///   媒体卡上挂着一个 m4a、音频卡不出现,点下载还按视频存进 Movies/Jicun/Video。
+  ///   MV 也走这条接口,那时 `url` 是 mp4、`vtype` 是 `mp4` —— 所以**按元数据分流,
+  ///   不是按平台分流**(见 [_isAudioStreamOnly] 与 [_qishuiStreamKind]);
+  /// - 歌词是**逐字**格式、不是 LRC:转行级 LRC 时会把 `<0,240,0>` 这种逐字标记丢掉
+  ///   (见 [_qishuiLyrics]),落进文件的是干净的 `[mm:ss.xx]正文`。
+  factory ParseResult.fromQishuiMusic(Map<String, dynamic> data) {
+    // 万一哪天它改成同站 `/api/douyin` 那套结构(同一家的代码),那套这边照样认。
+    // **判据要看它自己的字段**:那套结构认的标记里有一个 `cover`,而汽水音乐这条
+    // 应答也可能哪天补上一张真封面 —— 先认 `video_meta` / `albumname` 这些**只有
+    // 这首歌这条接口才有**的字段,不然一份带封面的音乐应答会被当成那套结构读,
+    // 歌名直接读成空(实测踩到)。
+    if (!_isQishuiShape(data) && _isUpstreamFormat(data)) {
+      return _qishuiFromUpstreamShape(data);
+    }
+
+    final url = _strOrNull(data['url']);
+    final isAudio =
+        url != null && _isAudioStreamOnly(url, _qishuiStreamKind(data));
+    // 真封面优先;这条接口实测不给专辑封面,那就拿歌手头像顶上 —— 并且**记下这是
+    // 兜底图**,服务端会拿这一位去我们自己的服务器补一张真的(见 [coverFromFallback])。
+    final cover = _qishuiCover(data);
+    return ParseResult(
+      title: cleanCopyText(_qishuiTitle(data)),
+      desc: cleanCopyText(_str(data['desc'])),
+      platform: '汽水音乐',
+      authorName: _qishuiArtist(data),
+      videoUrl: isAudio ? null : url,
+      coverUrl: cover ?? _qishuiAvatar(data),
+      audioUrl: isAudio ? url : null,
+      lyrics: _qishuiLyrics(data),
+      coverFromFallback: cover == null,
+    );
+  }
+
+  /// 应答回的是同站 `/api/douyin` 那套结构时走这里。
+  ///
+  /// 那套的根上 `url` 是视频、备选档位挂在 `video_backup[]` 上,但同一个接口服务的
+  /// 也可能是一首歌(那时根上的 `url` 就是音轨本身)—— 先分流,再交给
+  /// [ParseResult.fromUpstream] 读字段。
+  static ParseResult _qishuiFromUpstreamShape(Map<String, dynamic> data) {
+    final url = _strOrNull(data['url']);
+    if (url == null ||
+        !_isAudioStreamOnly(url, data['type']) ||
+        _hasVideoStream(data)) {
+      return ParseResult.fromUpstream(data, platform: '汽水音乐');
+    }
+    return ParseResult.fromUpstream(<String, dynamic>{
+      ...data,
+      // 主地址挪进 `audio_url`:根上的 `url` 只要还在,它就会被读成「视频」。
+      'url': null,
+      'audio_url': url,
+    }, platform: '汽水音乐');
+  }
+
   final String title;
   final String desc;
   final String platform;
@@ -661,13 +960,23 @@ class ParseResult {
   /// `video_list`,见 [toJson]。
   final List<VideoQuality> primaryQualities;
 
-  /// 歌词原文(LRC 或纯文本)。没有就是空串。
+  /// 歌词原文:**LRC**(带时间轴)或纯文本。没有就是空串。
   ///
-  /// **两个上游都不保证给**。实测(2026-09-27)汽水音乐那条链接两边都不回歌词,
-  /// 应答里连字段都没有 —— 所以内嵌歌词这件事得先让服务端把 `lyrics` 加上
-  /// (见 [_lyricsOf] 收的那几个键名)。收不到就是空,内嵌那一步会跳过歌词,
-  /// 不影响封面/作者/标题。
+  /// **哪条路都不保证给**。2026-09-27 实测汽水音乐那条链接两边都不回歌词;2026-10-06
+  /// 再测,第三方那条接口已经给了,而且带时间轴 —— 所以会被转成 LRC(见 [_qishuiLyrics]),
+  /// media-parser 仍然一条都不给。收不到就是空,落盘时两个歌词字段一起跳过:
+  ///   - 内嵌进音轨的歌词帧:`©lyr` 与 `©des` 各写一份,**都带时间轴**
+  ///     (见 lib/audio_tags.dart 的 `AudioTagInfo.lyrics`)。
   final String lyrics;
+
+  /// 这份封面是**兜底图**,不是平台真正的封面。
+  ///
+  /// 只有汽水音乐那条第三方接口会置位:它不给专辑封面,映射时只能拿歌手头像顶上
+  /// (见 [_qishuiAvatar])。服务端看到这一位就再补一次**我们自己的服务器**,只为了
+  /// 那一张真封面(见 ParseService.parse)—— 补不到就留着头像,不影响别的字段。
+  ///
+  /// **不进历史**([toJson] 不写它):补封面只在解析那一刻做一次,存下来没有意义。
+  final bool coverFromFallback;
 
   /// 多视频:媒体卡列出两条以上视频就要走缩略图网格、取消播放器。
   ///
@@ -814,6 +1123,27 @@ class ParseResult {
     videos: videos,
     livePhotos: livePhotos,
     primaryQualities: primaryQualities,
+    lyrics: lyrics,
+    coverFromFallback: coverFromFallback,
+  );
+
+  /// 换一张封面,其余原样 —— 补封面用(见 [coverFromFallback] 与
+  /// [ParseService.parse])。
+  ///
+  /// 换完就**不再算兜底图**:这一次补成功了,不该再补第二次。
+  ParseResult withCover(String url) => ParseResult(
+    title: title,
+    desc: desc,
+    platform: platform,
+    authorName: authorName,
+    videoUrl: videoUrl,
+    coverUrl: url,
+    audioUrl: audioUrl,
+    imageUrls: imageUrls,
+    videos: videos,
+    livePhotos: livePhotos,
+    primaryQualities: primaryQualities,
+    lyrics: lyrics,
   );
 
   /// 存历史用。字段名和 [ParseResult.fromJson] 对齐,能原样读回来 ——

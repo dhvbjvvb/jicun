@@ -153,15 +153,80 @@ http.Response _upstreamFail([String message = '解析参数与该平台不匹配
       headers: const <String, String>{'content-type': 'application/json'},
     );
 
-/// 装后端:记录每次请求的地址,[upstream] 决定上游那几条接口怎么答。
+/// 汽水音乐那条**免密钥**接口(bugpk)的 host。
 ///
-/// 记的是 **host + path**(不再是纯 path):APP 现在直连上游站点,路径里区分不出
-/// "是上游还是兜底"了 —— 得看域名。
+/// 同样不写死:真值在 [ParseService.publicUpstreamPaths] 里。测试里抄一份域名
+/// 就等于把「这条链接打去哪」也一起写进了测试 —— 换接口时两边会一起错。
+final String _publicHost = Uri.parse(
+  ParseService.publicUpstreamPaths[ParsePlatform.qishuiMusic]!,
+).host;
+
+/// 免密钥那家的应答外壳:`code` + `msg` + `data`(注意**没有** `succ`)。
+http.Response _publicOk(Map<String, dynamic> data) => http.Response.bytes(
+  utf8.encode(
+    jsonEncode(<String, dynamic>{'code': 200, 'msg': '解析成功-esa', 'data': data}),
+  ),
+  200,
+  headers: const <String, String>{'content-type': 'application/json'},
+);
+
+/// 免密钥那家的失败:实测(2026-10-06)它**回的是 HTTP 200**,理由在 `msg` 里 ——
+/// `{"code":404,"msg":"获取失败"}` / `{"code":400,"msg":"无法解析视频 ID"}`。
+/// 所以「状态码 200 就等于成功」那套判据在这里必须不管用。
+http.Response _publicFail([String message = '获取失败']) => http.Response.bytes(
+  utf8.encode(jsonEncode(<String, dynamic>{'code': 404, 'msg': message})),
+  200,
+  headers: const <String, String>{'content-type': 'application/json'},
+);
+
+/// 汽水音乐那条接口回的那条音轨地址。
 ///
-/// 返回的列表就是调用顺序 —— 用它断言「先上游、后兜底」,以及「有没有碰过上游」。
+/// 照真实应答抄的:路径是个不带后缀的 ID,格式写在 query 里(`mime_type=audio_mp4`)
+/// —— 分流就是靠这个东西,不是靠扩展名。
+const String _kQishuiAudioUrl =
+    'https://v11-luna.douyinvod.com/dd840183d5b5f4e0a4147cbed178f1eb/6ac536ba/'
+    'video/tos/cn/tos-cn-ve-2774/o0HA2iq2geZQEcktFPCsVQYDZgjDjpsBKafHKl/'
+    '?a=8478&ch=0&cr=5&br=251&bt=251&mime_type=audio_mp4&qs=7';
+
+/// 汽水音乐那条接口回的**一首歌** —— 字段逐个照真实应答抄(2026-10-06,
+/// `https://qishui.douyin.com/s/iXqRAg7Q/`),只把地址和歌词截短。
+Map<String, dynamic> _qishuiSongData({
+  String url = _kQishuiAudioUrl,
+}) => <String, dynamic>{
+  'url': url,
+  'video_meta': <String, dynamic>{
+    'quality': 'highest',
+    'vtype': 'm4a',
+    'bitrate': 257535,
+    'codec_type': 'aac',
+    'size': 4011636,
+    'file_id': '3b22eed8828b4a85ab7b4bf8eab67d49',
+    'file_hash': '561e23049d99ab884bc6b1ab13a1860e',
+    'real_bitrate': 257535,
+    'audio_sample_rate': 44100,
+  },
+  'lyric': '[1880,3710]<0,240,0>You <240,260,0>thought <500,220,0>that '
+      '<720,240,0>you <960,220,0>would <1180,220,0>use <1400,240,0>me\n'
+      '[5600,3710]<0,180,0>When <180,150,0>I <330,170,0>fell',
+  'albumname': 'Left alone',
+  'artistsid': 2344610331113192,
+  'artistsname': 'TI_C',
+  'artistsmedium_avatar_url': <dynamic>[
+    'https://p3.douyinpic.com/aweme/720x720/aweme-avatar/tos-cn-avt-0015_x.jpeg',
+  ],
+};
+
+/// 装后端:记录每次请求的地址,[upstream] / [publicUpstream] 决定第三方那几条接口
+/// 怎么答。
+///
+/// 记的是 **host + path**(不再是纯 path):APP 现在直连第三方站点,路径里区分不出
+/// "是第三方还是兜底"了 —— 得看域名。
+///
+/// 返回的列表就是调用顺序 —— 用它断言「先第三方、后兜底」,以及「有没有碰过第三方」。
 List<String> useStubTwoUpstreams({
   http.Response Function()? upstream,
   http.Response Function()? fallback,
+  http.Response Function()? publicUpstream,
 }) {
   final hits = <String>[];
   ParseService.clientFactory = () => MockClient((request) async {
@@ -170,15 +235,23 @@ List<String> useStubTwoUpstreams({
     if (url.path == '/ping') return http.Response('', 204);
     final where = '${url.host}${url.path}';
     hits.add(where);
-    // 上游站点 vs 我们自己的反代:按域名分。顺手确认上游那条带了密钥头 ——
-    // 密钥在客户端里,漏了就会 401,这条断言就是防这个的。
+    // 付费那家 vs 我们自己的反代 vs 免密钥那家:按域名分。顺手确认该带密钥的那条
+    // 带了(**客户端里那份**),漏了就会 401,这条断言就是防这个的。
     if (url.host == Uri.parse(ParseService.upstreamBase).host) {
       expect(
         request.headers['X-API-Key'],
         ParseService.upstreamApiKey,
-        reason: '直连上游必须带 X-API-Key',
+        reason: '直连付费上游必须带 X-API-Key',
       );
       return (upstream ?? () => _upstreamOk(_upstreamVideoData()))();
+    }
+    if (url.host == _publicHost) {
+      expect(
+        request.headers['X-API-Key'],
+        isNull,
+        reason: '公开接口是免密钥的,我们的密钥一个字节都不该发过去',
+      );
+      return (publicUpstream ?? () => _publicOk(_qishuiSongData()))();
     }
     expect(
       request.headers['X-API-Key'],
@@ -294,6 +367,43 @@ void main() {
       expect(
         ParseService.upstreamPaths.containsKey(ParsePlatform.unknown),
         isFalse,
+      );
+    });
+
+    test('汽水音乐:短链、分享页、网页版都归到它', () {
+      // 分享短链。这条最要紧:qishui.douyin.com 是 douyin.com 的**子域**,
+      // 而 detectPlatform 认子域 —— 靠的是它在 _kPlatformHosts 里排在抖音前面。
+      expect(
+        detectPlatform('https://qishui.douyin.com/s/69HXcAV/'),
+        ParsePlatform.qishuiMusic,
+      );
+      // 短链跳转后的分享页:挂在整个属于抖音的域名上,只能连路径一起认
+      expect(
+        detectPlatform('https://music.douyin.com/qishui/share/track?track_id=1'),
+        ParsePlatform.qishuiMusic,
+      );
+      expect(detectPlatform('https://www.qishui.com/'), ParsePlatform.qishuiMusic);
+      // 抖音还是抖音 —— 上面那两条不能把整个域名带跑
+      expect(
+        detectPlatform('https://music.douyin.com/aweme/1'),
+        ParsePlatform.douyin,
+      );
+      expect(
+        detectPlatform('https://www.douyin.com/video/1'),
+        ParsePlatform.douyin,
+      );
+    });
+
+    test('汽水音乐在免密钥那张表里,不在付费那张', () {
+      // 进了付费那张表,[_request] 就会把我们按量计费的密钥发到这个第三方站点
+      expect(
+        ParseService.upstreamPaths.containsKey(ParsePlatform.qishuiMusic),
+        isFalse,
+      );
+      expect(ParseService.upstreamPaths[ParsePlatform.qishuiMusic], isNull);
+      expect(
+        ParseService.publicUpstreamPaths[ParsePlatform.qishuiMusic],
+        'https://api.bugpk.com/api/qsmusic',
       );
     });
   });
@@ -547,6 +657,164 @@ void main() {
       expect(hits, <String>['$_upstreamHost/api/dyjx', '$apiHost/parse']);
       expect(result.title, '兜底视频');
       expect(service.lastRoute, 'upstream:douyin-failed→fallback');
+    });
+  });
+
+  group('汽水音乐的路由', () {
+    // 汽水音乐的分享短链(实测 2026-10-06 那一批里的一条)。
+    const link = 'https://qishui.douyin.com/s/69HXcAV/';
+
+    test('先打第三方(免密钥):成功就用它的,不再走兜底的解析', () async {
+      // 这一条应答自带封面 → 不需要补封面那一趟(见下面两条)
+      final hits = useStubTwoUpstreams(
+        publicUpstream: () => _publicOk(<String, dynamic>{
+          ..._qishuiSongData(),
+          'cover': 'https://example.invalid/album.jpg',
+        }),
+      );
+      final service = ParseService();
+      addTearDown(service.dispose);
+
+      final result = await service.parse(link);
+
+      expect(hits, <String>['$_publicHost/api/qsmusic']);
+      expect(service.lastRoute, 'upstream:qishuiMusic');
+      expect(result.title, 'Left alone');
+      expect(result.platform, '汽水音乐');
+      expect(result.authorName, 'TI_C');
+      expect(result.coverUrl, 'https://example.invalid/album.jpg');
+      // 这条应答回的是**音频流**(`mime_type=audio_mp4`):出来的该是音频卡,
+      // 不是「媒体卡上挂一个 m4a」。判据就是这两个(见 preview.dart 的 forResult)。
+      expect(result.hasStandaloneAudio, isTrue);
+      expect(result.hasVideo, isFalse);
+      expect(result.audioUrl, _kQishuiAudioUrl);
+    });
+
+    test('第三方没给专辑封面:补一次我们服务器,只取那张真封面', () async {
+      // 真实应答就是这样:只有歌手头像,没有封面字段。补回来的是我们服务器那条
+      // (`_fallbackVideoData` 里的 `cover_url`)。
+      final hits = useStubTwoUpstreams(
+        publicUpstream: () => _publicOk(_qishuiSongData()),
+      );
+      final service = ParseService();
+      addTearDown(service.dispose);
+
+      final result = await service.parse(link);
+
+      expect(hits, <String>['$_publicHost/api/qsmusic', '$apiHost/parse']);
+      // 结论仍然是第三方那一份:线路名只多一段 `+cover`,不是 `→fallback`
+      expect(service.lastRoute, 'upstream:qishuiMusic+cover');
+      expect(result.coverUrl, 'https://example.invalid/c.jpg');
+      // 别的字段一个都没被我们服务器那一份顶掉
+      expect(result.title, 'Left alone');
+      expect(result.authorName, 'TI_C');
+      expect(result.audioUrl, _kQishuiAudioUrl);
+      // 歌词也是第三方那一份(转成了 LRC),没被我们服务器那份顶掉
+      expect(result.lyrics, startsWith('[00:01.88]You thought'));
+    });
+
+    test('补封面两次都没成:留着歌手头像,别把解析结论弄丢', () async {
+      final hits = useStubTwoUpstreams(
+        publicUpstream: () => _publicOk(_qishuiSongData()),
+        fallback: () => _fail('服务器异常'),
+      );
+      final service = ParseService();
+      addTearDown(service.dispose);
+
+      final result = await service.parse(link);
+
+      // 补封面会**重试一次**(那一下网络没成是常事,见 parse_service.dart 的
+      // [_coverAttempts]),所以兜底那条被打两次 —— 但两次都没成的结论和以前一样:
+      // 还是第三方那一份,封面留着头像。
+      expect(hits, <String>[
+        '$_publicHost/api/qsmusic',
+        '$apiHost/parse',
+        '$apiHost/parse',
+      ]);
+      expect(service.lastRoute, 'upstream:qishuiMusic+cover-miss');
+      expect(
+        result.coverUrl,
+        'https://p3.douyinpic.com/aweme/720x720/aweme-avatar/tos-cn-avt-0015_x.jpeg',
+      );
+      expect(result.title, 'Left alone');
+      expect(result.hasStandaloneAudio, isTrue);
+    });
+
+    test('补封面第一次没成、第二次成了:结论还是第三方那份,封面补上', () async {
+      // 这正是 2026-10-06 用户手机上那条的现场:同一份包、同一分钟内下了三首,
+      // 两条补上了封面、中间那条 `cover_url` 是 null。第一次网络没成是常事,
+      // 没有这次重试,那首歌就永远没封面(卡片和内嵌 covr 一起空着)。
+      var attempts = 0;
+      final hits = useStubTwoUpstreams(
+        publicUpstream: () => _publicOk(_qishuiSongData()),
+        fallback: () {
+          attempts++;
+          return attempts == 1 ? _fail('网络连接失败') : _ok(_fallbackVideoData());
+        },
+      );
+      final service = ParseService();
+      addTearDown(service.dispose);
+
+      final result = await service.parse(link);
+
+      expect(hits, <String>[
+        '$_publicHost/api/qsmusic',
+        '$apiHost/parse',
+        '$apiHost/parse',
+      ]);
+      expect(service.lastRoute, 'upstream:qishuiMusic+cover');
+      expect(result.coverUrl, 'https://example.invalid/c.jpg');
+      // 只换了封面:标题 / 作者 / 歌词 / 音轨仍然是第三方那一份
+      expect(result.title, 'Left alone');
+      expect(result.authorName, 'TI_C');
+      expect(result.audioUrl, _kQishuiAudioUrl);
+      expect(result.lyrics, startsWith('[00:01.88]You thought'));
+    });
+
+    test('第三方回 HTTP 200 + code 404:那不是成功,回落 media-parser', () async {
+      final hits = useStubTwoUpstreams(publicUpstream: _publicFail);
+      final service = ParseService();
+      addTearDown(service.dispose);
+
+      final result = await service.parse(link);
+
+      expect(hits, <String>['$_publicHost/api/qsmusic', '$apiHost/parse']);
+      expect(service.lastRoute, 'upstream:qishuiMusic-failed→fallback');
+      expect(result.title, '兜底视频');
+    });
+
+    test('第三方回 200 + 空结果(一条媒体都没有)也算失败,回落', () async {
+      final hits = useStubTwoUpstreams(
+        publicUpstream: () => _publicOk(<String, dynamic>{
+          'type': 'music',
+          'title': '空结果',
+        }),
+      );
+      final service = ParseService();
+      addTearDown(service.dispose);
+
+      await service.parse(link);
+
+      expect(hits, <String>['$_publicHost/api/qsmusic', '$apiHost/parse']);
+      expect(service.lastRoute, 'upstream:qishuiMusic-empty→fallback');
+    });
+
+    test('两条都失败:报第三方那句(它才是真原因)', () async {
+      useStubTwoUpstreams(
+        publicUpstream: _publicFail,
+        fallback: () => _fail('该平台暂不支持'),
+      );
+      final service = ParseService();
+      addTearDown(service.dispose);
+
+      Object? thrown;
+      try {
+        await service.parse(link);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ParseException>());
+      expect((thrown! as ParseException).message, '获取失败');
     });
   });
 
@@ -901,6 +1169,128 @@ void main() {
       expect(result.hasStandaloneAudio, isFalse);
       // 有视频,所以面板上照样有视频卡 —— 只是没有音频卡,也不会拿视频顶一张
       expect(result.hasVideo, isTrue);
+    });
+  });
+
+  group('汽水音乐的映射', () {
+    test('真实应答(一首歌):根上的 url 是音频流,出来的是音频卡', () {
+      final result = ParseResult.fromQishuiMusic(_qishuiSongData());
+
+      // 音频卡的判据就是这两个(见 lib/pages/preview.dart 的 forResult):
+      expect(result.hasVideo, isFalse);
+      expect(result.hasStandaloneAudio, isTrue);
+      expect(result.audioUrl, _kQishuiAudioUrl);
+      expect(result.videoUrl, isNull);
+      expect(result.primaryVideo, isNull);
+      // 名字在 `albumname`、歌手在 `artistsname`、封面只有歌手头像顶
+      expect(result.title, 'Left alone');
+      expect(result.authorName, 'TI_C');
+      expect(
+        result.coverUrl,
+        'https://p3.douyinpic.com/aweme/720x720/aweme-avatar/tos-cn-avt-0015_x.jpeg',
+      );
+      // 这张是歌手头像兜的,不是专辑封面 —— 服务端据此再补一张真的(见 coverFromFallback)
+      expect(result.coverFromFallback, isTrue);
+      // 平台名是给用户看的中文
+      expect(result.platform, '汽水音乐');
+    });
+
+    test('真实应答:逐字歌词转成标准 LRC —— 落盘的歌词就是这一份(带时间轴)', () {
+      final result = ParseResult.fromQishuiMusic(_qishuiSongData());
+
+      // 这一份同时写进 `©lyr` 与 `©des`(见 lib/audio_tags.dart 的 AudioTagInfo.lyrics):
+      // 播放器认哪个字段各不相同,但两边都必须是**带时间轴**的,否则它滚动不起来。
+      expect(
+        result.lyrics,
+        '[00:01.88]You thought that you would use me\n[00:05.60]When I fell',
+      );
+    });
+
+    test('MV(url 与元数据都说 video)照旧当视频', () {
+      final result = ParseResult.fromQishuiMusic(<String, dynamic>{
+        'url': 'https://v11-luna.douyinvod.com/x/6ac5/tos/cn/mv/?mime_type=video_mp4',
+        'video_meta': <String, dynamic>{'vtype': 'mp4', 'codec_type': 'h264'},
+        'albumname': '某支 MV',
+        'artistsname': '某歌手',
+      });
+
+      expect(result.primaryVideoUrl, startsWith('https://v11-luna'));
+      expect(result.hasVideo, isTrue);
+      expect(result.hasStandaloneAudio, isFalse);
+      expect(result.title, '某支 MV');
+    });
+
+    test('同站 /api/douyin 那套结构也认:根上是音轨就挪进 audio_url', () {
+      final result = ParseResult.fromQishuiMusic(<String, dynamic>{
+        'type': 'music',
+        'title': '歌名',
+        'cover': 'https://example.invalid/cover.jpg',
+        'url': 'https://example.invalid/song.mp3',
+        'video_backup': <dynamic>[],
+        'music': <String, dynamic>{'url': 'https://example.invalid/song.mp3'},
+      });
+
+      expect(result.audioUrl, 'https://example.invalid/song.mp3');
+      expect(result.hasStandaloneAudio, isTrue);
+      expect(result.title, '歌名');
+      expect(result.coverUrl, 'https://example.invalid/cover.jpg');
+      // 这一份自带封面 → 不是兜底图,服务端不会再补一趟(见 coverFromFallback)
+      expect(result.coverFromFallback, isFalse);
+    });
+
+    test('同站那套结构里根上是 mp4:当视频,另给的音轨进音频卡', () {
+      final result = ParseResult.fromQishuiMusic(<String, dynamic>{
+        'type': 'video',
+        'title': 'MV',
+        'cover': 'https://example.invalid/c.jpg',
+        'url': 'https://example.invalid/mv.mp4',
+        'label': '原画',
+        'music': <String, dynamic>{'url': 'https://example.invalid/bgm.mp3'},
+      });
+
+      expect(result.primaryVideoUrl, 'https://example.invalid/mv.mp4');
+      expect(result.hasVideo, isTrue);
+      expect(result.hasStandaloneAudio, isTrue);
+    });
+
+    test('同站那套结构里备选只有 HLS 播放列表时,一首歌仍然是歌', () {
+      // 那种 m3u8 本来就会被丢掉(下载器不做 HLS 分片拼接),拿它把整份应答判成
+      // 「MV」只会让这首歌顶着一张视频卡,而卡上那条地址下回来是个播放列表文本。
+      final result = ParseResult.fromQishuiMusic(<String, dynamic>{
+        'type': 'music',
+        'url': 'https://example.invalid/song.mp3',
+        'video_backup': <dynamic>[
+          <String, dynamic>{
+            'url': 'https://example.invalid/song_hlsob.m3u8',
+            'quality': '720p',
+          },
+        ],
+      });
+
+      expect(result.primaryVideo, isNull);
+      expect(result.audioUrl, 'https://example.invalid/song.mp3');
+    });
+
+    test('扩展名、MIME、元数据都说不清时按视频走(保守那边)', () {
+      // 判成音频而视频卡不出现,用户就完全拿不到那一条流了;反过来只是卡片类型
+      // 不准 —— 所以认不出来时站视频这边。
+      final result = ParseResult.fromQishuiMusic(<String, dynamic>{
+        'url': 'https://example.invalid/tos/abc/?br=981',
+        'video_meta': <String, dynamic>{'vtype': 'unknown'},
+      });
+
+      expect(result.hasVideo, isTrue);
+      expect(result.hasStandaloneAudio, isFalse);
+    });
+
+    test('存历史再读回来还是音频', () {
+      final result = ParseResult.fromQishuiMusic(_qishuiSongData());
+      final restored = ParseResult.fromJson(result.toJson());
+
+      expect(restored.audioUrl, _kQishuiAudioUrl);
+      expect(restored.hasStandaloneAudio, isTrue);
+      expect(restored.hasVideo, isFalse);
+      expect(restored.title, 'Left alone');
     });
   });
 

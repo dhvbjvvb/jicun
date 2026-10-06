@@ -37,3 +37,12 @@ const String upstreamBaseUrl = 'https://api.invalid.example';
 /// `url.host == Uri.parse(ParseService.upstreamBase).host`)。两个占位值一样的话,两条路
 /// 会被认成同一条,CI 上会挂一批路由用例 —— 本地 secrets 里填的是真值,反而看不出来。
 const String ownApiHost = 'own.invalid.example';
+
+/// **本应用自己的**接口域名 —— 主用那条连不上时的**逃生域名**。
+///
+/// 真值和上面几个一样不放版本库。它存在的唯一理由是：运营商是按 SNI 阻断域名的，
+/// 那时换 IP、加优选 IP 都救不了，只能换一个没被封的域名 —— 所以它必须和
+/// [ownApiHost] **不同名**，两个都编译进包才叫退路。
+///
+/// 占位值同样别和上面那几个撞（占位值下它连不上，APP 会走内置的其它候选）。
+const String escapeApiHost = 'escape.invalid.example';
