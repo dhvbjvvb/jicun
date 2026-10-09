@@ -190,31 +190,31 @@ const String _kQishuiAudioUrl =
 
 /// 汽水音乐那条接口回的**一首歌** —— 字段逐个照真实应答抄(2026-10-06,
 /// `https://qishui.douyin.com/s/iXqRAg7Q/`),只把地址和歌词截短。
-Map<String, dynamic> _qishuiSongData({
-  String url = _kQishuiAudioUrl,
-}) => <String, dynamic>{
-  'url': url,
-  'video_meta': <String, dynamic>{
-    'quality': 'highest',
-    'vtype': 'm4a',
-    'bitrate': 257535,
-    'codec_type': 'aac',
-    'size': 4011636,
-    'file_id': '3b22eed8828b4a85ab7b4bf8eab67d49',
-    'file_hash': '561e23049d99ab884bc6b1ab13a1860e',
-    'real_bitrate': 257535,
-    'audio_sample_rate': 44100,
-  },
-  'lyric': '[1880,3710]<0,240,0>You <240,260,0>thought <500,220,0>that '
-      '<720,240,0>you <960,220,0>would <1180,220,0>use <1400,240,0>me\n'
-      '[5600,3710]<0,180,0>When <180,150,0>I <330,170,0>fell',
-  'albumname': 'Left alone',
-  'artistsid': 2344610331113192,
-  'artistsname': 'TI_C',
-  'artistsmedium_avatar_url': <dynamic>[
-    'https://p3.douyinpic.com/aweme/720x720/aweme-avatar/tos-cn-avt-0015_x.jpeg',
-  ],
-};
+Map<String, dynamic> _qishuiSongData({String url = _kQishuiAudioUrl}) =>
+    <String, dynamic>{
+      'url': url,
+      'video_meta': <String, dynamic>{
+        'quality': 'highest',
+        'vtype': 'm4a',
+        'bitrate': 257535,
+        'codec_type': 'aac',
+        'size': 4011636,
+        'file_id': '3b22eed8828b4a85ab7b4bf8eab67d49',
+        'file_hash': '561e23049d99ab884bc6b1ab13a1860e',
+        'real_bitrate': 257535,
+        'audio_sample_rate': 44100,
+      },
+      'lyric':
+          '[1880,3710]<0,240,0>You <240,260,0>thought <500,220,0>that '
+          '<720,240,0>you <960,220,0>would <1180,220,0>use <1400,240,0>me\n'
+          '[5600,3710]<0,180,0>When <180,150,0>I <330,170,0>fell',
+      'albumname': 'Left alone',
+      'artistsid': 2344610331113192,
+      'artistsname': 'TI_C',
+      'artistsmedium_avatar_url': <dynamic>[
+        'https://p3.douyinpic.com/aweme/720x720/aweme-avatar/tos-cn-avt-0015_x.jpeg',
+      ],
+    };
 
 /// 装后端:记录每次请求的地址,[upstream] / [publicUpstream] 决定第三方那几条接口
 /// 怎么答。
@@ -379,10 +379,15 @@ void main() {
       );
       // 短链跳转后的分享页:挂在整个属于抖音的域名上,只能连路径一起认
       expect(
-        detectPlatform('https://music.douyin.com/qishui/share/track?track_id=1'),
+        detectPlatform(
+          'https://music.douyin.com/qishui/share/track?track_id=1',
+        ),
         ParsePlatform.qishuiMusic,
       );
-      expect(detectPlatform('https://www.qishui.com/'), ParsePlatform.qishuiMusic);
+      expect(
+        detectPlatform('https://www.qishui.com/'),
+        ParsePlatform.qishuiMusic,
+      );
       // 抖音还是抖音 —— 上面那两条不能把整个域名带跑
       expect(
         detectPlatform('https://music.douyin.com/aweme/1'),
@@ -785,10 +790,8 @@ void main() {
 
     test('第三方回 200 + 空结果(一条媒体都没有)也算失败,回落', () async {
       final hits = useStubTwoUpstreams(
-        publicUpstream: () => _publicOk(<String, dynamic>{
-          'type': 'music',
-          'title': '空结果',
-        }),
+        publicUpstream: () =>
+            _publicOk(<String, dynamic>{'type': 'music', 'title': '空结果'}),
       );
       final service = ParseService();
       addTearDown(service.dispose);
@@ -940,8 +943,7 @@ void main() {
         ],
         'live_photo': <dynamic>[
           <String, dynamic>{
-            'image':
-                'https://p9-sign.cdn.example/tos/live-a~tplv:q80.jpeg?x-signature=bb',
+            'image': 'https://p9-sign.cdn.example/tos/live-a~tplv:q80.jpeg?x-signature=bb',
             'video': 'https://v.cdn.example/live-a.mp4',
           },
         ],

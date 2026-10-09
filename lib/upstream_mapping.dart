@@ -587,6 +587,7 @@ String? _qishuiCover(Map<String, dynamic> data) =>
 /// 行级那个**必须捕获数字**:转 LRC 时要用的是起始毫秒(见 [_qishuiLyrics])。
 final RegExp _kKaraokeLineTag = RegExp(r'^\[(\d+),(\d+)\]\s*');
 final RegExp _kKaraokeWordTag = RegExp(r'<\d+,\d+,\d+>');
+
 /// 拿它顶上是因为封面要用在**音频标签和媒体卡**上(见 lib/audio_tags.dart 的
 /// `AudioTagInfo.coverUrl`):有一张总比空白强,而它确实是这首歌的歌手。但它不是专辑
 /// 封面 —— 所以用了它就把 [ParseResult.coverFromFallback] 置位,让服务端有机会去
@@ -602,7 +603,6 @@ String? _qishuiAvatar(Map<String, dynamic> data) {
   return null;
 }
 
-
 /// 汽水音乐的歌词 → **标准 LRC**。
 ///
 /// 实测回的是**逐字**格式:
@@ -610,10 +610,10 @@ String? _qishuiAvatar(Map<String, dynamic> data) {
 /// —— 行首是「这一行的起始毫秒 + 时长」,词上挂的是「相对行首的偏移 + 时长」。
 ///
 /// 这里转成 `[00:01.88]You thought that you would use me` 这种**行级 LRC**,而不是
-  /// 这里转成 `[00:01.88]You thought that you would use me` 这种**行级 LRC**,而不是
-  /// 纯文本:落进音频文件的那两份歌词(`©lyr` 与 `©des`)都要**带时间轴** —— 播放器
-  /// 认哪个字段各不相同,而它能滚动显示歌词的那种情况,歌词都是带时间轴的(见
-  /// lib/audio_tags.dart 的 `AudioTagInfo.lyrics`)。
+/// 这里转成 `[00:01.88]You thought that you would use me` 这种**行级 LRC**,而不是
+/// 纯文本:落进音频文件的那两份歌词(`©lyr` 与 `©des`)都要**带时间轴** —— 播放器
+/// 认哪个字段各不相同,而它能滚动显示歌词的那种情况,歌词都是带时间轴的(见
+/// lib/audio_tags.dart 的 `AudioTagInfo.lyrics`)。
 ///
 /// 逐字的偏移在行级 LRC 里没地方放,丢掉 —— 那是卡拉OK式的高亮,主流播放器不吃。
 /// 落不到时标的行(本来就没有 `[起始,时长]`)原样保留成纯文本,不硬编时间轴。
@@ -862,7 +862,6 @@ class ParseResult {
       lyrics: _lyricsOf(data),
     );
   }
-
 
   /// 汽水音乐那条第三方接口(bugpk 的 `/api/qsmusic`,免密钥)的应答 → 模型。
   ///
@@ -1229,7 +1228,8 @@ class ParseResult {
     final cover = coverUrl == null ? '' : _identityOf(coverUrl);
     final liveThumbs = <String>{
       for (final p in livePhotos)
-        if (p.thumbUrl != null && p.thumbUrl!.isNotEmpty) _identityOf(p.thumbUrl!),
+        if (p.thumbUrl != null && p.thumbUrl!.isNotEmpty)
+          _identityOf(p.thumbUrl!),
     };
     final seen = <String>{};
     final cleaned = <String>[];

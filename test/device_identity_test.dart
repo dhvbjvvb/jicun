@@ -387,7 +387,9 @@ void main() {
       await ensureDeviceIdentity();
 
       // 只打这一趟:**签名刷新**。不发挑战值、不登记 —— 证明书那套碰都不碰
-      expect(requests.map((request) => request.url.path), <String>['/device/refresh']);
+      expect(requests.map((request) => request.url.path), <String>[
+        '/device/refresh',
+      ]);
       expect(requests.single.method, 'POST');
       expect(requests.single.headers[kDeviceHeaderName], deviceId);
       expect(requests.single.headers[kDeviceHeaderSig], isNotNull);

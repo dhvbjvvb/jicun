@@ -51,7 +51,6 @@ class AudioTagInfo {
       coverUrl.isEmpty;
 }
 
-
 /// 封面超过这个大小就不内嵌。
 ///
 /// 封面是拿来做缩略图的,正常几百 KB 顶天(汽水那条 375x375 的 jpg 只有几十 KB)。

@@ -665,7 +665,9 @@ void main() {
     const douyin = 'https://v.douyin.com/abc/';
 
     /// 请求头上所有 X-Jicun-*(大小写不敏感)。
-    List<String> deviceHeadersOf(http.BaseRequest request) => request.headers.keys
+    List<String> deviceHeadersOf(http.BaseRequest request) => request
+        .headers
+        .keys
         .where((key) => key.toLowerCase().startsWith('x-jicun-'))
         .toList();
 
@@ -683,24 +685,22 @@ void main() {
       });
       resetDeviceIdentityCache();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-            const MethodChannel(kDeviceChannel),
-            (call) async {
-              if (call.method == 'sign') {
-                onSign?.call();
-                return 'MEUCIQfakeSignature==';
-              }
-              if (call.method == 'deviceId') return id;
-              return null;
-            },
-          );
+          .setMockMethodCallHandler(const MethodChannel(kDeviceChannel), (
+            call,
+          ) async {
+            if (call.method == 'sign') {
+              onSign?.call();
+              return 'MEUCIQfakeSignature==';
+            }
+            if (call.method == 'deviceId') return id;
+            return null;
+          });
       addTearDown(
-        () =>
-            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-                .setMockMethodCallHandler(
-                  const MethodChannel(kDeviceChannel),
-                  null,
-                ),
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel(kDeviceChannel),
+              null,
+            ),
       );
       // 幂等那条路:落盘的 id 和原生那边对得上 → 一次网络都不发,只是把 id 放进内存。
       await ensureDeviceIdentity();
@@ -753,10 +753,7 @@ void main() {
       expect(seen.last.url.path, '/parse');
       expect(seen.last.url.host, Uri.parse(ParseService.endpoint).host);
       expect(deviceHeadersOf(seen.last), hasLength(4));
-      expect(
-        seen.last.headers[kDeviceHeaderName],
-        'cmqGRgCA3vR2TBI8-GYEbm',
-      );
+      expect(seen.last.headers[kDeviceHeaderName], 'cmqGRgCA3vR2TBI8-GYEbm');
       expect(signCalls, 1, reason: '只有我们自己那趟才需要签');
       expect(result.hasVideo, isTrue);
     });
@@ -771,33 +768,31 @@ void main() {
       resetDeviceIdentityCache();
       var signCalls = 0;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-            const MethodChannel(kDeviceChannel),
-            (call) async {
-              switch (call.method) {
-                case 'sign':
-                  signCalls++;
-                  return 'MEUCIQfakeSignature==';
-                case 'createKey':
-                  return <String, Object?>{
-                    'deviceId': id,
-                    'attested': true,
-                    'certificateChain': <String>['LEAFCERT'],
-                  };
-                case 'androidApi':
-                  return 34;
-                default:
-                  return null;
-              }
-            },
-          );
+          .setMockMethodCallHandler(const MethodChannel(kDeviceChannel), (
+            call,
+          ) async {
+            switch (call.method) {
+              case 'sign':
+                signCalls++;
+                return 'MEUCIQfakeSignature==';
+              case 'createKey':
+                return <String, Object?>{
+                  'deviceId': id,
+                  'attested': true,
+                  'certificateChain': <String>['LEAFCERT'],
+                };
+              case 'androidApi':
+                return 34;
+              default:
+                return null;
+            }
+          });
       addTearDown(
-        () =>
-            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-                .setMockMethodCallHandler(
-                  const MethodChannel(kDeviceChannel),
-                  null,
-                ),
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel(kDeviceChannel),
+              null,
+            ),
       );
       // 登记的应答故意慢一点:保证解析请求确实是在「登记还没办完」的那一刻发出去的。
       deviceClientFactory = () => MockClient((request) async {
@@ -909,7 +904,6 @@ void main() {
       expect(deviceHeadersOf(seen.single), isEmpty);
     });
   });
-
 
   group('safeFileName', () {
     test('清掉路径分隔符和非法字符,保留中文', () {

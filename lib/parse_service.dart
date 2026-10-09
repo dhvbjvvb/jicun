@@ -350,9 +350,7 @@ class ParseService {
     final uri = Uri.parse(endpoint).replace(queryParameters: {'url': shareUrl});
     // 密钥**只发给付费那家**:media-parser 的密钥由我们自己在 nginx 上注入,
     // 客户端手里没有(也不该有);公开的第三方更不该拿到它。
-    var headers = apiKey == null
-        ? null
-        : <String, String>{'X-API-Key': apiKey};
+    var headers = apiKey == null ? null : <String, String>{'X-API-Key': apiKey};
     // 设备签名头(硬件密钥证明,见 lib/device_identity.dart)**只加给我们自己的端点**。
     // endpoint 由 apiUrl(...) 拼出来就算我们的;第三方上游那一批地址一律不加 ——
     // 那四个头里有 device_id,漏给第三方等于把「这台设备是谁」白送出去,和密钥同一条纪律。
@@ -514,6 +512,7 @@ enum ParsePlatform {
   kuaishou('快手'),
   doubao('豆包'),
   wechatChannels('微信视频号'),
+
   /// 汽水音乐。**它有自己一条免密钥的第三方接口**(见
   /// [ParseService.publicUpstreamPaths]),不是走付费那家。
   qishuiMusic('汽水音乐'),
@@ -568,7 +567,8 @@ ParsePlatform detectPlatform(String url) {
   if (host.isEmpty) return ParsePlatform.unknown;
   // 汽水音乐的分享页挂在 `music.douyin.com/qishui/…` 上(短链跳转后的地址就是它),
   // 而那个域名整体是抖音的 —— 这个只能连路径一起看,不然就得把整个域名让出去。
-  if (host == 'music.douyin.com' && (uri?.path.startsWith('/qishui') ?? false)) {
+  if (host == 'music.douyin.com' &&
+      (uri?.path.startsWith('/qishui') ?? false)) {
     return ParsePlatform.qishuiMusic;
   }
   for (final entry in _kPlatformHosts.entries) {

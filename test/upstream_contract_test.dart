@@ -53,7 +53,8 @@ void main() {
       //     (见 ParseResult._cleanImages)。
       final liveIds = <String>{
         for (final p in r.livePhotos)
-          if (p.thumbUrl != null && p.thumbUrl!.isNotEmpty) identity(p.thumbUrl!),
+          if (p.thumbUrl != null && p.thumbUrl!.isNotEmpty)
+            identity(p.thumbUrl!),
       };
       expect(
         imageIds.any(liveIds.contains),

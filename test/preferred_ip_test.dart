@@ -502,7 +502,11 @@ void main() {
 
       expect(PreferredIpConnector.remote, ['9.9.9.9']);
       expect(PreferredIpConnector.remoteHosts, ['new.example.com']);
-      expect(PreferredIpConnector.cfHost, 'cf.example.com', reason: '优选 IP 要绑它');
+      expect(
+        PreferredIpConnector.cfHost,
+        'cf.example.com',
+        reason: '优选 IP 要绑它',
+      );
       expect(supportedHosts, ['v.douyin.com']);
       // 没缓存(从没拉过)就什么都不动,继续用内置兜底。
       PreferredIpConnector.remoteHosts = const [];
