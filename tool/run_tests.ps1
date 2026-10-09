@@ -216,52 +216,52 @@ if ($SelfCheck) {
   $parseCases = @(
     @{
       name   = '第一段/整套被杀:did not complete + 末尾 Failing tests 两处都要认出来'
-      root   = 'D:/AndroidStudio/APP/untitled'
+      root   = 'D:/work/repo'
       text   = @'
-01:08 +463: D:/AndroidStudio/APP/untitled/test/widget_update_test.dart: 检查更新 点更新:先弹下载进度窗口,再把包交给系统安装器
-01:13 +465: D:/AndroidStudio/APP/untitled/test/widget_history_test.dart: 解析页:接口没给音频,就只呈现视频卡,不拿视频顶一张音频出来 - did not complete [E]
-01:13 +465: D:/AndroidStudio/APP/untitled/test/widget_test.dart: 横滑切板块 解析往左滑到历史,再往左到设置;到头了就不动 - did not complete [E]
+01:08 +463: D:/work/repo/test/widget_update_test.dart: 检查更新 点更新:先弹下载进度窗口,再把包交给系统安装器
+01:13 +465: D:/work/repo/test/widget_history_test.dart: 解析页:接口没给音频,就只呈现视频卡,不拿视频顶一张音频出来 - did not complete [E]
+01:13 +465: D:/work/repo/test/widget_test.dart: 横滑切板块 解析往左滑到历史,再往左到设置;到头了就不动 - did not complete [E]
 01:13 +465: Some tests failed.
 
 Failing tests:
-  D:/AndroidStudio/APP/untitled/test/widget_history_test.dart: 冷启动预热一次连接,点输入框不会重复打 (did not complete)
+  D:/work/repo/test/widget_history_test.dart: 冷启动预热一次连接,点输入框不会重复打 (did not complete)
 '@
       expect = @{ 'test/widget_update_test.dart' = 'NONE'; 'test/widget_history_test.dart' = 'KILLED'; 'test/widget_test.dart' = 'KILLED' }
     }
     @{
       name   = '第一段/加载期被杀:Failed to load + Connection closed'
-      root   = 'D:/AndroidStudio/APP/untitled'
+      root   = 'D:/work/repo'
       text   = @'
-00:08 +115: D:/AndroidStudio/APP/untitled/test/media_date_test.dart: JPEG: 没有 EXIF 时不改动文件
-00:08 +116 -1: loading D:/AndroidStudio/APP/untitled/test/downloader_native_test.dart [E]
-  Failed to load "D:/AndroidStudio/APP/untitled/test/downloader_native_test.dart": Connection closed before test suite loaded.
+00:08 +115: D:/work/repo/test/media_date_test.dart: JPEG: 没有 EXIF 时不改动文件
+00:08 +116 -1: loading D:/work/repo/test/downloader_native_test.dart [E]
+  Failed to load "D:/work/repo/test/downloader_native_test.dart": Connection closed before test suite loaded.
 '@
       expect = @{ 'test/media_date_test.dart' = 'NONE'; 'test/downloader_native_test.dart' = 'KILLED' }
     }
     @{
       name   = '第一段/真失败:带 [E] 的失败行算 FAILED,同文件先被打成 KILLED 就不再降级'
-      root   = 'D:/AndroidStudio/APP/untitled'
+      root   = 'D:/work/repo'
       text   = @'
-00:02 +3: D:/AndroidStudio/APP/untitled/test/foo_test.dart: 再过一条
-00:02 +3 -1: D:/AndroidStudio/APP/untitled/test/foo_test.dart: 故意失败 [E]
+00:02 +3: D:/work/repo/test/foo_test.dart: 再过一条
+00:02 +3 -1: D:/work/repo/test/foo_test.dart: 故意失败 [E]
   Expected: <2>
     Actual: <1>
-00:02 +3 -1: D:/AndroidStudio/APP/untitled/test/bar_test.dart: 被杀的那条 - did not complete [E]
+00:02 +3 -1: D:/work/repo/test/bar_test.dart: 被杀的那条 - did not complete [E]
 '@
       expect = @{ 'test/foo_test.dart' = 'FAILED'; 'test/bar_test.dart' = 'KILLED' }
     }
     @{
       name   = '第一段/全绿'
-      root   = 'D:/AndroidStudio/APP/untitled'
+      root   = 'D:/work/repo'
       text   = @'
-00:24 +450: D:/AndroidStudio/APP/untitled/test/widget_test.dart: 桌面端:设置页没有「检查更新」,视频路径是 Windows 的 Videos/
+00:24 +450: D:/work/repo/test/widget_test.dart: 桌面端:设置页没有「检查更新」,视频路径是 Windows 的 Videos/
 00:24 +450: All tests passed!
 '@
       expect = @{}
     }
     @{
       name   = '第一段/相对路径也要认(逐文件跑时 flutter 也可能打相对路径)'
-      root   = 'D:/AndroidStudio/APP/untitled'
+      root   = 'D:/work/repo'
       text   = '00:05 +2: test/audio_tags_test.dart: embedAudioTags M4A 端到端 - did not complete [E]'
       expect = @{ 'test/audio_tags_test.dart' = 'KILLED' }
     }
