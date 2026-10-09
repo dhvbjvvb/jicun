@@ -12,6 +12,10 @@
   "api.bilibili.com"
  ],
  "notBiliHosts": [
+  "evilbilivideo.com",
+  "notbilibili.com",
+  "upos-x.evilakamaized.net",
+  "bilibili.com.evil.example",
   "mirror.akamaized.net",
   "x.example.akamaized.net",
   "upos-x.akamaized.net.example.com",

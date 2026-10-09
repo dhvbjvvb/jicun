@@ -105,9 +105,19 @@ String _hostOf(String url) => Uri.tryParse(url)?.host.toLowerCase() ?? '';
 ///   2. `upos-*.akamaized.net`:B 站在 Akamai 上的镜像主机名就长这样。Akamai 是公共
 ///      CDN,不带 `upos-` 前缀的一律不碰 —— 别人家的东西不能替人加 Referer。
 bool _isBilibiliHost(String host) {
-  if (_bilibiliHostSuffixes.any(host.endsWith)) return true;
-  return host.startsWith('upos-') && host.endsWith('akamaized.net');
+  if (_bilibiliHostSuffixes.any((suffix) => _hostIsUnder(host, suffix))) {
+    return true;
+  }
+  return host.startsWith('upos-') && _hostIsUnder(host, 'akamaized.net');
 }
+
+/// host 是这个域名本身,或者是它的子域。
+///
+/// **不能直接用 `endsWith`**:`evilbilivideo.com` 也以 `bilivideo.com` 结尾,照那样我们会
+/// 给一个跟 B 站无关的域名带上 Referer 与桌面 UA —— 正好是这张表要避免的事。Akamai 那条
+/// 同理:`upos-x.evilakamaized.net` 前缀后缀都像,但它不是这个域。
+bool _hostIsUnder(String host, String suffix) =>
+    host == suffix || host.endsWith('.$suffix');
 
 /// B 站 CDN 的自家域名后缀。
 const List<String> _bilibiliHostSuffixes = <String>[

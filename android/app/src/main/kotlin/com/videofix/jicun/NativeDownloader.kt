@@ -198,14 +198,29 @@ internal const val BILIBILI_REFERER = "https://www.bilibili.com/"
  *   2. `upos-*.akamaized.net`:B 站在 Akamai 上的镜像主机名就长这样。Akamai 是公共
  *      CDN,不带 `upos-` 前缀的一律不碰 —— 别人家的东西不能替人加 Referer。
  *
+ * 两条都按**域名边界**判:是那个域本身,或者是它的子域。「后缀像但不是这个域」的一律不认
+ * (`evilbilivideo.com` / `upos-x.evilakamaized.net`)。
+ *
  * Dart 侧同一张表在 playback.dart 的 `_isBilibiliHost` / `_bilibiliHostSuffixes`,
  * 两边必须一致(单测盯着)。
  */
 internal fun isBilibiliHost(host: String): Boolean =
-    host.endsWith("bilivideo.com") ||
-        host.endsWith("bilivideo.cn") ||
-        host.endsWith("bilibili.com") ||
-        (host.startsWith("upos-") && host.endsWith("akamaized.net"))
+    bilibiliHostSuffixes.any { isHostUnder(host, it) } ||
+        (host.startsWith("upos-") && isHostUnder(host, "akamaized.net"))
+
+/** B 站 CDN 的自家域名后缀。和 Dart 侧 playback.dart 的 `_bilibiliHostSuffixes` 同一张表。 */
+private val bilibiliHostSuffixes = listOf("bilivideo.com", "bilivideo.cn", "bilibili.com")
+
+/**
+ * host 是这个域名本身,或者是它的子域。
+ *
+ * **不能直接用 `endsWith`**:`evilbilivideo.com` 也以 `bilivideo.com` 结尾,照那样原生会给
+ * 一个跟 B 站无关的域名带上 Referer 与桌面 UA —— 正好是这张表要避免的事。Akamai 那条同理:
+ * `upos-x.evilakamaized.net` 前缀后缀都像,但它不是这个域。
+ */
+private fun isHostUnder(host: String, suffix: String): Boolean =
+    host == suffix || host.endsWith(".$suffix")
+
 internal class HttpStatusError(message: String) : IOException(message)
 
 /**
