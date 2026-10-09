@@ -9,3 +9,10 @@
 *.conf text eol=lf
 *.service text eol=lf
 .gitattributes text eol=lf
+
+# 其余文件(尤其 `*.dart` / `*.kt` / `*.md`)也一并钉成 LF:这台开发机 core.autocrlf=true,
+# 不钉住的话工作区是 CRLF、索引里是 LF,于是每次 git add 都刷一屏 "LF will be replaced by
+# CRLF",本地与 CI(Linux 检出)看到的行尾也不一样。上面那几条按扩展名的规则留着不动:它们
+# 说的是 deploy/ 的原样拷贝那件事,和这里不是一回事(而且最后一条命中的规则生效,两边都是
+# eol=lf,不冲突)。二进制由 text=auto 自己认,不会被碰。
+* text=auto eol=lf
