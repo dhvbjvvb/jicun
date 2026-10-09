@@ -23,6 +23,9 @@ jobs:
       # **钉住版本**:格式门是按某个 dart_style 版本排出来的对齐结果,`channel: stable`
       # 一升(3.47.6 → 下一个 stable)这道门就自己变红 —— 实测过一次:Dart 3.13.3 升到
       # 3.13.5 后,dart format 对**没改过的**文件也要求重排。
+      # 版本号的**来源**是仓库根的 .flutter-version,这一行由 tool/check_repo_hygiene.py
+      # 对着它校验(两边各改各的,正是这道门变红的原因)。升 SDK 的走法:改 .flutter-version
+      # 与这一行 → 跑 dart format lib test 对齐 → 提交。
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.6
@@ -51,6 +54,8 @@ jobs:
       # 注释里点名的函数改名/删了,只有这个脚本会红 —— 测试与 analyzer 都不会。
       # 判据刻意保守:只认像代码标识符的反引号词,外部名记在脚本的 FOREIGN 表里。
       - run: python3 tool/check_comment_refs.py
+      # 仓库卫生:本机路径、pub 源、密钥文件、SDK 版本来源 —— 判据与来由逐条写在脚本头部。
+      - run: python3 tool/check_repo_hygiene.py
 
       # **逐文件跑**(CI 上的跑法)。原因见 README「为什么要逐文件跑」:Windows 上的
       # flutter_tester 有一条引擎级缺陷(ShaderMask + 滚动,0xc0000005),会静默杀掉
