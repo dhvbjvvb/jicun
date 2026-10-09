@@ -20,9 +20,12 @@ jobs:
           # 首跑仍然要下全套,之后那步 apk 构建能从几分钟掉到几十秒。
           cache: gradle
 
+      # **钉住版本**:格式门是按某个 dart_style 版本排出来的对齐结果,`channel: stable`
+      # 一升(3.47.6 → 下一个 stable)这道门就自己变红 —— 实测过一次:Dart 3.13.3 升到
+      # 3.13.5 后,dart format 对**没改过的**文件也要求重排。
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: 3.47.6
 
       # lib/secrets.dart is gitignored, and the app does not compile without it.
       # The template is enough here: the tests stub the network, and no real
@@ -34,9 +37,10 @@ jobs:
 
       # 格式门。dart format 只动空白,所以它的价值不在"代码好不好看",而在不让 diff 漂:
       # 谁提交前忘了跑,下一个人的改动里就会混进一堆无关折行,review 时分不清哪行是
-      # 真改动。命令与本机一致,本地跑法:dart format lib test
-      # 整个仓库一次性对齐后才有这道门 —— 之前逐文件改 bug 时,顺手带进来的折行会
-      # 混在同一个 diff 里。
+      # 真改动。命令与本机一致,本地跑法:dart format lib test。
+      # **它和上面钉住的 Flutter 版本绑死**:换 dart_style 版本就得重新对齐一遍,否则
+      # 这道门会对没改过的文件也报红(实测过一次:Dart 3.13.3 → 3.13.5 之后有 10 个文件
+      # 需要重排)。升级 SDK 该是一个显式提交:先改上面的版本号,再跑一次对齐。
       - name: dart format(格式门)
         run: dart format --output=none --set-exit-if-changed lib test
 
@@ -48,12 +52,13 @@ jobs:
       # 判据刻意保守:只认像代码标识符的反引号词,外部名记在脚本的 FOREIGN 表里。
       - run: python3 tool/check_comment_refs.py
 
-      # **逐文件跑**。原因见 README「为什么要逐文件跑」:Windows 上的
+      # **逐文件跑**(CI 上的跑法)。原因见 README「为什么要逐文件跑」:Windows 上的
       # flutter_tester 有一条引擎级缺陷(ShaderMask + 滚动,0xc0000005),会静默杀掉
       # 整个测试进程、一次带走同一文件剩下的几十条用例。崩的是 Windows 版 tester,
-      # CI 跑 Linux 理论上不受影响 —— 但**本机与 CI 用同一套跑法**才不会出现"本地红、
-      # CI 绿"这种没法归因的情况;逐文件还顺带把爆炸半径限制在一个文件里。
-      # 改测试或跑验证时,本机用等价的 .\tool\run_tests.ps1。
+      # CI 跑 Linux 理论上不受影响 —— 逐文件把爆炸半径限制在一个文件里。
+      #
+      # 本机跑法:.\tool\run_tests.ps1 默认是「整套跑一遍 + 只重跑嫌疑文件」(平时敲
+      # 它就行),与这条逐文件循环**不等价**;要完全等价用 -PerFile。
       #
       # **只在 tester 崩了时重试一次**。断言/异常失败不重试:重试一次会“偶尔挂一次”
       # 的真 bug 抹成绿色。判据与本机脚本 [Test-RunnerCrashed] 一致。
