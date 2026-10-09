@@ -152,6 +152,60 @@ internal fun wholeFileStreamRequired(size: Long, rangeIgnored: Boolean): Boolean
  * 而 403/404 再试一百次还是 403/404 —— 探针是**串行**跑的,一批地址全失效时
  * 每个白等 1.2 秒就变成了肉眼可见的"卡住"。
  */
+/**
+ * 请求头里的 UA。
+ *
+ * Java 默认发的是 `Dalvik/2.x` —— 对 CDN 的风控来说那和扫描器没区别。浏览器能下完、
+ * 我们不能,UA 与 Referer 是能直接对齐的两处差异。
+ *
+ * 两个 UA 放在顶层是为了能被纯 JVM 单测盯住,和 Dart 侧(playback.dart 的
+ * `kBilibiliUserAgent` / `kBrowserUserAgent`)逐字对齐 —— 见
+ * NativeDownloaderBilibiliHeadersTest。
+ */
+internal const val BROWSER_UA =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+
+/**
+ * B 站 CDN 单独一份 UA —— 它**把移动版 Chrome 的 UA 直接 403**。
+ *
+ * 实测同一条 DASH 音频地址(upos-*.bilivideo.com 上那条 `.m4s`):上面那个
+ * `Android 14 / Chrome/126 Mobile` 回 403,而桌面 Chrome、ExoPlayerLib、甚至
+ * Java 默认的 `Dalvik/2.x` 都是 206。Referer 也不是可选项:不带它时哪个 UA 都 403。
+ *
+ * 为什么以前没暴露:视频走的那条 `.mp4`(durl)两个 UA 都收,只有 DASH 的 `.m4s`
+ * 挑 UA。音频改用 DASH 流之后才撞上这个 —— 症状是预览能放(ExoPlayer 用自己那份
+ * UA),一点下载就报「下载地址已失效」。
+ */
+internal const val BILIBILI_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+/** B 站 CDN 认的 Referer。见 [isBilibiliHost]。 */
+internal const val BILIBILI_REFERER = "https://www.bilibili.com/"
+
+/**
+ * 这条主机名是不是 B 站 CDN 上的。
+ *
+ * **镜像是挂在别家 CDN 上的,只认自家域名会漏一半**:实测(2026-10-05)同一条视频的
+ * 音频地址,服务端一次给 `upos-sz-mirrorcosov.bilivideo.com`、下一次给
+ * `upos-hz-mirrorakam.akamaized.net` —— 后者后缀里没有任何「B 站」字样,漏判就退回
+ * Java 默认那份 `Dalvik/2.x`;而那条音轨(带 Range 的 206 探测实测)
+ * **不带 Referer 的桌面 UA 能过、把 UA 头整个去掉就 403**。
+ *
+ * 判据两条:
+ *   1. 自家域名(`*.bilivideo.com` / `*.bilivideo.cn` / `*.bilibili.com`);
+ *   2. `upos-*.akamaized.net`:B 站在 Akamai 上的镜像主机名就长这样。Akamai 是公共
+ *      CDN,不带 `upos-` 前缀的一律不碰 —— 别人家的东西不能替人加 Referer。
+ *
+ * Dart 侧同一张表在 playback.dart 的 `_isBilibiliHost` / `_bilibiliHostSuffixes`,
+ * 两边必须一致(单测盯着)。
+ */
+internal fun isBilibiliHost(host: String): Boolean =
+    host.endsWith("bilivideo.com") ||
+        host.endsWith("bilivideo.cn") ||
+        host.endsWith("bilibili.com") ||
+        (host.startsWith("upos-") && host.endsWith("akamaized.net"))
 internal class HttpStatusError(message: String) : IOException(message)
 
 /**
@@ -351,31 +405,6 @@ class NativeDownloader(
          * 16 路快段约 13.6MB/s,32 路快段约 25MB/s —— 峰值是被连接数限住的。
          */
         private const val DEFAULT_LANES = 32
-
-        /**
-         * 请求头里的 UA。
-         *
-         * Java 默认发的是 `Dalvik/2.x` —— 对 CDN 的风控来说那和扫描器没区别。浏览器
-         * 能下完、我们不能,UA 与 Referer 是能直接对齐的两处差异。
-         */
-        private const val BROWSER_UA =
-            "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
-
-        /**
-         * B 站 CDN 单独一份 UA —— 它**把移动版 Chrome 的 UA 直接 403**。
-         *
-         * 实测同一条 DASH 音频地址(upos-*.bilivideo.com 上那条 `.m4s`):上面那个
-         * `Android 14 / Chrome/126 Mobile` 回 403,而桌面 Chrome、ExoPlayerLib、甚至
-         * Java 默认的 `Dalvik/2.x` 都是 206。Referer 也不是可选项:不带它时哪个 UA 都 403。
-         *
-         * 为什么以前没暴露:视频走的那条 `.mp4`(durl)两个 UA 都收,只有 DASH 的 `.m4s`
-         * 挑 UA。音频改用 DASH 流之后才撞上这个 —— 症状是预览能放(ExoPlayer 用自己那份
-         * UA),一点下载就报「下载地址已失效」。
-         */
-        private const val BILIBILI_UA =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
         /** 一段最多试几次(含第一次)。探针和"大小未知"那条整条下载用它。 */
         private const val ATTEMPTS = 3
@@ -637,26 +666,6 @@ class NativeDownloader(
         }
 
     /**
-     * 这条地址是不是 B 站 CDN 上的。
-     *
-     * **镜像是挂在别家 CDN 上的,只认自家域名会漏一半**:实测(2026-10-05)同一条视频的
-     * 音频地址,服务端一次给 `upos-sz-mirrorcosov.bilivideo.com`、下一次给
-     * `upos-hz-mirrorakam.akamaized.net` —— 后者后缀里没有任何「B 站」字样,漏判就退回
-     * Java 默认那份 `Dalvik/2.x`;而那条音轨(带 Range 的 206 探测实测)
-     * **不带 Referer 的桌面 UA 能过、把 UA 头整个去掉就 403**。
-     *
-     * 判据两条:
-     *   1. 自家域名(`*.bilivideo.com` / `*.bilivideo.cn` / `*.bilibili.com`);
-     *   2. `upos-*.akamaized.net`:B 站在 Akamai 上的镜像主机名就长这样。Akamai 是公共
-     *      CDN,不带 `upos-` 前缀的一律不碰 —— 别人家的东西不能替人加 Referer。
-     */
-    private fun isBilibiliHost(host: String): Boolean =
-        host.endsWith("bilivideo.com") ||
-            host.endsWith("bilivideo.cn") ||
-            host.endsWith("bilibili.com") ||
-            (host.startsWith("upos-") && host.endsWith("akamaized.net"))
-
-    /**
      * 这条地址该带哪个 Referer。认不出平台就返回 null(不动请求头)。
      *
      * B 站那几家的镜像域名是按 Referer 白名单放行的(判据见 [isBilibiliHost])—— 浏览器
@@ -664,7 +673,7 @@ class NativeDownloader(
      */
     private fun platformReferer(url: String): String? {
         val host = runCatching { URL(url).host?.lowercase() }.getOrNull() ?: return null
-        return if (isBilibiliHost(host)) "https://www.bilibili.com/" else null
+        return if (isBilibiliHost(host)) BILIBILI_REFERER else null
     }
 
     /** 这条地址该用哪个 UA。见 [BILIBILI_UA]。 */
