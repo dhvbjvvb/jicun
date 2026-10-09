@@ -901,8 +901,11 @@ void main() {
 
       expect(result.videoUrl, isNull);
       expect(result.authorName, '多少u才算够');
-      // images 里那一张就是实况的静态帧:实况不算"有视频",所以它不该被当封面剔掉
-      expect(result.imageUrls.length, 1);
+      // images 里那一张就是实况的静态帧:**同一资源**,实况视频已经带着它当缩略图了,
+      // 图集里不能再列一遍(否则媒体卡排成「N 个 MP4 + 紧跟 N 张同样的帧」,
+      // 看着就像后一半动图变成了图片)。见 ParseResult._cleanImages。
+      expect(result.imageUrls, isEmpty);
+      expect(result.hasImages, isFalse);
       expect(result.livePhotos.length, 1);
       expect(
         result.livePhotos.single.videoUrl,
@@ -917,6 +920,47 @@ void main() {
       expect(result.primaryVideoUrl, result.livePhotos.single.videoUrl);
       // 实况帖没有清晰度可选(上游 video_backup 是空的)
       expect(result.primaryVideo!.hasQualityChoice, isFalse);
+    });
+
+    test('实况帖:动图那张帧归视频,真静态图留在图集里(上游两处都给帧)', () {
+      // 上游对 `type` = `live` 的帖子把同一批帧给两遍:`images[]` 一份、
+      // `live_photo[].image` 再一份,两边路径完全相同。**按资源去重**后只有真正的
+      // 静态图留在图集里;动图那张帧跟着自己的 mp4 进媒体卡(当缩略图),
+      // 不再单独占一格 —— 否则就是「N 个 MP4 + 紧跟 N 张同样的帧」。
+      final result = ParseResult.fromUpstream(<String, dynamic>{
+        'type': 'live',
+        'title': '混排',
+        'url': null,
+        'cover': 'https://cdn.example/cover.jpg?sig=a',
+        'images': <dynamic>[
+          'https://cdn.example/still-a.jpg',
+          // 与下面 live_photo[0].image 是**同一资源、不同签名**(host 与 query 都不同)
+          'https://p3-sign.cdn.example/tos/live-a~tplv:q80.jpeg?x-signature=aa',
+          'https://cdn.example/still-b.jpg',
+        ],
+        'live_photo': <dynamic>[
+          <String, dynamic>{
+            'image':
+                'https://p9-sign.cdn.example/tos/live-a~tplv:q80.jpeg?x-signature=bb',
+            'video': 'https://v.cdn.example/live-a.mp4',
+          },
+        ],
+      }, platform: '抖音');
+
+      // 两张真静态图留下,动图那张不重复列
+      expect(result.imageUrls, <String>[
+        'https://cdn.example/still-a.jpg',
+        'https://cdn.example/still-b.jpg',
+      ]);
+      expect(result.livePhotos.length, 1);
+      expect(
+        result.livePhotos.single.thumbUrl,
+        contains('/tos/live-a~tplv:q80.jpeg'),
+      );
+      expect(result.hasVideo, isTrue);
+      expect(result.hasImages, isTrue);
+      // 只有 1 条视频 → 还是播放器,不是缩略图网格
+      expect(result.hasMultiVideo, isFalse);
     });
 
     test('真实应答(快手):标签取数字档位,同一条 720P 出现两遍也只留一格', () {

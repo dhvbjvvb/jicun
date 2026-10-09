@@ -48,6 +48,19 @@ void main() {
         reason: '$platform:图集里有重复资源',
       );
 
+      // 1b. 图集里也不能出现「动图那张静态帧」—— 实况图把它当缩略图带在自己的 mp4 上了
+      //     (`live_photo[].image`),再从 `images[]` 当一张图列一遍就是同一张图出现两次
+      //     (见 ParseResult._cleanImages)。
+      final liveIds = <String>{
+        for (final p in r.livePhotos)
+          if (p.thumbUrl != null && p.thumbUrl!.isNotEmpty) identity(p.thumbUrl!),
+      };
+      expect(
+        imageIds.any(liveIds.contains),
+        isFalse,
+        reason: '$platform:图集里混进了动图的静态帧',
+      );
+
       // 2. 有真视频时,图集里不该再出现"视频封面"那张。
       //    判据只看 video_url / video_list:实况图不算「有视频」(见 ParseResult._cleanImages)——
       //    实况帖的封面往往就是图集第一张真图,拿它当视频封面剔掉会平白少一张。

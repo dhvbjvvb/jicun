@@ -730,6 +730,8 @@ class ParseResult {
         media.images,
         coverUrl: coverUrl,
         hasVideo: videoUrl != null || videos.isNotEmpty,
+        // 实况图自带的那张静态帧也按资源剔掉 —— 见 [_cleanImages] 里的说明。
+        livePhotos: livePhotos,
       ),
       videos: videos,
       livePhotos: livePhotos,
@@ -850,6 +852,9 @@ class ParseResult {
         images,
         coverUrl: coverUrl,
         hasVideo: videoUrl != null,
+        // 实况图自带的那张静态帧别再当图集列一遍:付费实况帖(`type` = live)
+        // 把同一批帧给两遍,列两遍就是「N 个视频 + 紧跟 N 张同样的图」。
+        livePhotos: livePhotos,
       ),
       videos: videos,
       livePhotos: livePhotos,
@@ -1209,18 +1214,30 @@ class ParseResult {
   /// 实况图的静态帧在 `image_list` 里是带 `live_photo_url` 的对象,本来就进不了
   /// `images`;而帖子封面常常就是图集第一张真图(最右实测),把实况算成"有视频"
   /// 会把那张真图当封面剔掉。
+  ///
+  /// **动图(实况)那张静态帧同样要剔掉** —— 见 [livePhotos]。付费通道的实况帖
+  /// (`type` = `live`)把同一批帧给两遍:`images[]` 一份、`live_photo[].image` 再一份,
+  /// 两边路径完全相同。实况那张已经**带着自己的 mp4** 出现在媒体卡里(缩略图就是这张
+  /// 帧),再当图集列一遍就是同一张图出现两次 —— 实测一条 18 张动图的帖子,混合卡排成
+  /// 「18 个 MP4 + 紧跟 18 张同样的静态帧」,看着就像后一半动图变成了图片。
   static List<String> _cleanImages(
     List<String> images, {
     required String? coverUrl,
     required bool hasVideo,
+    List<LivePhoto> livePhotos = const <LivePhoto>[],
   }) {
     final cover = coverUrl == null ? '' : _identityOf(coverUrl);
+    final liveThumbs = <String>{
+      for (final p in livePhotos)
+        if (p.thumbUrl != null && p.thumbUrl!.isNotEmpty) _identityOf(p.thumbUrl!),
+    };
     final seen = <String>{};
     final cleaned = <String>[];
     for (final url in images) {
       final id = _identityOf(url);
       if (!seen.add(id)) continue;
       if (hasVideo && id == cover) continue;
+      if (liveThumbs.contains(id)) continue;
       cleaned.add(url);
     }
     return cleaned;
