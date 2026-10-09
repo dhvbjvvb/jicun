@@ -637,31 +637,41 @@ class NativeDownloader(
         }
 
     /**
+     * 这条地址是不是 B 站 CDN 上的。
+     *
+     * **镜像是挂在别家 CDN 上的,只认自家域名会漏一半**:实测(2026-10-05)同一条视频的
+     * 音频地址,服务端一次给 `upos-sz-mirrorcosov.bilivideo.com`、下一次给
+     * `upos-hz-mirrorakam.akamaized.net` —— 后者后缀里没有任何「B 站」字样,漏判就退回
+     * Java 默认那份 `Dalvik/2.x`;而那条音轨(带 Range 的 206 探测实测)
+     * **不带 Referer 的桌面 UA 能过、把 UA 头整个去掉就 403**。
+     *
+     * 判据两条:
+     *   1. 自家域名(`*.bilivideo.com` / `*.bilivideo.cn` / `*.bilibili.com`);
+     *   2. `upos-*.akamaized.net`:B 站在 Akamai 上的镜像主机名就长这样。Akamai 是公共
+     *      CDN,不带 `upos-` 前缀的一律不碰 —— 别人家的东西不能替人加 Referer。
+     */
+    private fun isBilibiliHost(host: String): Boolean =
+        host.endsWith("bilivideo.com") ||
+            host.endsWith("bilivideo.cn") ||
+            host.endsWith("bilibili.com") ||
+            (host.startsWith("upos-") && host.endsWith("akamaized.net"))
+
+    /**
      * 这条地址该带哪个 Referer。认不出平台就返回 null(不动请求头)。
      *
-     * B 站的 `upos-<地区>-mirror<..>.bilivideo.com` 这类镜像域名是按 Referer 白名单
-     * 放行的 —— 浏览器带着 `https://www.bilibili.com/` 请求,所以能下;我们原来既没有
-     * Referer 也没有浏览器 UA,能连上但更容易被中间层掐断(用户实测:浏览器全程不断,
-    * App 下到 80% 报"网络中断")。把这两件浏览器本来就有的事补齐,是差异最小的一步。
+     * B 站那几家的镜像域名是按 Referer 白名单放行的(判据见 [isBilibiliHost])—— 浏览器
+     * 带着 `https://www.bilibili.com/` 请求,所以能下;不带的话实测直接 403。
      */
     private fun platformReferer(url: String): String? {
         val host = runCatching { URL(url).host?.lowercase() }.getOrNull() ?: return null
-        return when {
-            host.endsWith("bilivideo.com") || host.endsWith("bilibili.com") ->
-                "https://www.bilibili.com/"
-            else -> null
-        }
+        return if (isBilibiliHost(host)) "https://www.bilibili.com/" else null
     }
 
     /** 这条地址该用哪个 UA。见 [BILIBILI_UA]。 */
     private fun platformUserAgent(url: String): String {
         val host = runCatching { URL(url).host?.lowercase() }.getOrNull()
             ?: return BROWSER_UA
-        return if (host.endsWith("bilivideo.com") || host.endsWith("bilibili.com")) {
-            BILIBILI_UA
-        } else {
-            BROWSER_UA
-        }
+        return if (isBilibiliHost(host)) BILIBILI_UA else BROWSER_UA
     }
 
     /**

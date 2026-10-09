@@ -493,18 +493,23 @@ void main() {
     );
   });
 
-  test('播放器请求头:B 站 CDN 补 Referer,别的主机一个都不塞', () {
-    // B 站 DASH 那条纯音频流不带 Referer 一律 403(实测),而它的 Content-Type 是
-    // video/mp4 —— 没有任何本地线索能反推出来,只能按主机名补。少了这一步,音频
-    // 预览就只有一块灰面板(播放器加载失败),时长自然也是空的。
+  test('播放器请求头:B 站 CDN 补 Referer + 桌面 UA,别的主机一个都不塞', () {
+    // B 站的镜像域名(自家的 `*.bilivideo.com` 与 Akamai 上的 `upos-*`)上,**Referer 和
+    // 桌面 UA 缺一不可**:实测把 UA 头整个去掉、或用移动版 Chrome / 播放器自己那份
+    // (ExoPlayerLib),这条 DASH 音轨都回 403。少了这一步,音频预览就只有一块灰面板
+    // —— 卡上那句 `(0) SOURCE ERROR`,时长自然也是空的。
     final headers = playbackHeaders(
       'https://upos-sz-mirrorcosov.bilivideo.com/upgcxcode/16/51/x-1-30280.m4s?e=1',
     );
     expect(headers['Referer'], 'https://www.bilibili.com/');
-    // **不塞 UA**:just_audio 会把 headers 里的 User-Agent 摘出来当播放器自己的 UA
-    // 用(AudioPlayer.buildDataSourceFactory),而 B 站 CDN 按「IP + UA」一起判 ——
-    // 我们猜哪一份都可能猜错,交给播放器自己那份。
-    expect(headers.containsKey('User-Agent'), isFalse);
+    expect(headers['User-Agent'], kBilibiliUserAgent);
+    // 镜像挂在 Akamai 上时后缀里没有任何「B 站」字样,也得认出来
+    expect(
+      playbackHeaders(
+        'https://upos-hz-mirrorakam.akamaized.net/x-1-30280.m4s',
+      )['User-Agent'],
+      kBilibiliUserAgent,
+    );
 
     // 别人的 CDN 不吃这一套:乱塞一个 Referer 反而可能被拒
     expect(playbackHeaders('https://cdn.example/a.mp3'), isEmpty);

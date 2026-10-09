@@ -110,7 +110,8 @@ class AudioStageState extends State<AudioStage> {
     // 点播放也不用等:just_audio 会记下这次 play,加载完自己开始。
     if (mounted) setState(() {});
     try {
-      // 带上请求头:平台的 CDN 有的按 Referer 放行(见 [playbackHeaders])
+      // 带上请求头:平台的 CDN 有的按 Referer / UA 放行(见 [playbackHeaders],
+      // 两个头缺一不可的那种就是 B 站)
       await player.setUrl(widget.url, headers: playbackHeaders(widget.url));
       // 上次播到哪就接回哪,切走再切回来不打回 00:00。
       final remembered = Playback.recall(widget.url);
@@ -125,16 +126,17 @@ class AudioStageState extends State<AudioStage> {
       // 超时都问不出来。
       if (!mounted) return;
       var message = '$error';
-      // 流式加载被播放器的 HTTP 栈掐了(抖音音乐 CDN 实测报 `(0) SOURCE ERROR`,
-      // 即 ExoPlaybackException.TYPE_SOURCE)。下载器那条路是通的 —— 改用本地缓存再放。
+      // 流式加载被播放器的 HTTP 栈掐了(实测报 `(0) SOURCE ERROR`,即
+      // ExoPlaybackException.TYPE_SOURCE)。下载器那条路是通的 —— 改用本地缓存再放。
       if (error is PlayerException && AudioStage.localCacheFallback) {
         setState(() {
           _failed = true;
           _error = '正在改用本地缓存…';
         });
-        final cached = await fetchAudioPreviewFile(widget.url);
+        final fetched = await fetchAudioPreviewFile(widget.url);
         // 抓的过程中用户可能换了链接 / 关掉了卡片:那样就别再动这个播放器。
         if (!mounted || !identical(_player, player)) return;
+        final cached = fetched.file;
         if (cached != null) {
           try {
             await player.setFilePath(cached.path);
@@ -153,6 +155,11 @@ class AudioStageState extends State<AudioStage> {
           } catch (fallbackError) {
             message = '$fallbackError';
           }
+        } else if (fetched.reason.isNotEmpty) {
+          // 兜底也没成:把它的理由一起留在卡上。原来这里还是那句 `(0) SOURCE ERROR`
+          // —— 那句话把 403、超时、文件太大全糊成一团,排障时只能靠猜(见
+          // [fetchAudioPreviewFile] 的说明)。
+          message = '$message(本地缓存:${fetched.reason})';
         }
       }
       if (mounted && identical(_player, player)) {
@@ -264,60 +271,171 @@ class AudioStageState extends State<AudioStage> {
   }
 }
 
-/// 音频预览的本地缓存:流式加载失败时,改用下载器那套(Dart 的 HttpClient + 浏览器 UA
-/// + 重试)把整段音频抓到缓存文件再放。
+/// [fetchAudioPreviewFile] 的结果:[file] 拿不到时,[reason] 说明为什么。
 ///
-/// 为什么需要它:抖音的 `*.douyinstatic.com` 在部分机型/网络下,ExoPlayer 会报
-/// `(0) SOURCE ERROR`(ExoPlaybackException.TYPE_SOURCE),而**同一地址下载器却能下**
-/// —— 差别在播放器的 HTTP 栈(默认 8s 超时、不重试)。下载器走通了,就用它那套兜底。
-Future<File?> fetchAudioPreviewFile(String url) async {
-  if (url.isEmpty) return null;
+/// 为什么要把理由带出来:兜底失败时卡上留的原来还是流式那次的原文(一句
+/// `(0) SOURCE ERROR`),403、超时、文件太大全糊成一团,排障只能靠猜。
+typedef AudioPreviewFetch = ({File? file, String reason});
+
+/// 预览音频缓存的**总体积预算**:120MB。
+///
+/// 这条路的产物是缓存目录里的一份**完整音频**,而缓存目录在 data 分区 —— 一条几小时的
+/// 直播回放能到几百 MB,那不是「能预览」,是把手机塞满。所以按**整个目录**封顶:每抓成
+/// 一条就回头收一次,超了淘汰最久没用过的那几条(见 `_trimCache`)。
+const int kPreviewAudioCacheLimitBytes = 120 * 1024 * 1024;
+
+/// 音频预览的本地缓存:流式加载失败时,改用下载器那套(Dart 的 HttpClient +
+/// **下载器同款请求头** + 重试)把整段音频抓到缓存文件再放。
+///
+/// 为什么需要它:有些 CDN 在部分机型/网络下会让 ExoPlayer 报 `(0) SOURCE ERROR`
+/// (ExoPlaybackException.TYPE_SOURCE),而**同一地址下载器却能下** —— 差别在播放器的
+/// HTTP 栈(默认 8s 超时、不重试,带的请求头也不一样)。下载器走通了,就用它那套兜底。
+///
+/// **请求头必须和下载器一字不差**(见 `fetchHeaders`):这条路的全部理由就是「下载器过
+/// 得去、播放器过不去」,而这里曾经图省事发的是浏览器 UA —— B 站的镜像域名只认桌面 UA
+/// + Referer,于是兜底三次全 403,卡上留下的还是那句看不懂的 `(0) SOURCE ERROR`。
+///
+/// [budgetBytes] 只给测试调小 —— 不然验「超了淘汰最旧的」要真下 120MB。见
+/// [kPreviewAudioCacheLimitBytes]。
+Future<AudioPreviewFetch> fetchAudioPreviewFile(
+  String url, {
+  int budgetBytes = kPreviewAudioCacheLimitBytes,
+}) async {
+  if (url.isEmpty) return (file: null, reason: '');
   final Directory dir;
   try {
     dir = Directory('${(await getTemporaryDirectory()).path}/preview_audio');
     await dir.create(recursive: true);
   } catch (_) {
     // 测试环境里 path_provider 没有实现;拿不到缓存目录就当这次兜底不可用。
-    return null;
+    return (file: null, reason: '');
   }
   final file = File(
     '${dir.path}/${previewAudioCacheKey(url)}.${_audioExtOf(url)}',
   );
-  // 已经抓过一次就复用(大小对不上当没抓到)。
-  if (await file.exists() && await file.length() > 0) return file;
+  // 已经抓过一次就复用(大小对不上当没抓到)。顺手把时间戳推到现在:淘汰看的是
+  // 「最久没用过」,用过一次就不该还按旧文件算。
+  if (await file.exists() && await file.length() > 0) {
+    await _touch(file);
+    await _trimCache(dir, keep: file, budgetBytes: budgetBytes);
+    return (file: file, reason: '');
+  }
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+  var reason = '';
   try {
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
         final request = await client.getUrl(Uri.parse(url));
-        request.headers.set(HttpHeaders.userAgentHeader, kBrowserUserAgent);
+        // 和下载器同款:认得出的平台补 Referer + 桌面 UA(见 `fetchHeaders`)。
+        for (final header in fetchHeaders(url).entries) {
+          request.headers.set(header.key, header.value);
+        }
         // 和下载器同一条理由:要的是原始字节,不要任何一层压缩。
         request.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
         final response = await request.close().timeout(
           const Duration(seconds: 30),
         );
         if (response.statusCode != 200 && response.statusCode != 206) {
+          reason = 'HTTP ${response.statusCode}';
           await response.drain<void>();
           continue;
         }
         final part = File('${file.path}.part');
         if (await part.exists()) await part.delete();
-        await response.pipe(part.openWrite());
-        if (await part.length() == 0) {
+        final written = await _fetchInto(response, part);
+        if (written == 0) {
+          // 收成空文件:当这一趟没成,半截文件不留。
           await part.delete();
           continue;
         }
         await part.rename(file.path);
-        return file;
+        // 多了一条就收一次目录:预算之内留着,超了从最久没用过的开始删。
+        await _trimCache(dir, keep: file, budgetBytes: budgetBytes);
+        return (file: file, reason: '');
       } catch (error, stack) {
         // 这一趟不行就再来一趟;三次都不行交给调用方报错。
+        reason = '$error';
         swallow('audio.fetch', error, stack);
       }
     }
   } finally {
     client.close(force: true);
   }
-  return null;
+  return (file: null, reason: reason);
+}
+
+/// 把整个缓存目录收进 [budgetBytes]:从**最久没用过**的开始删,直到装得下。
+///
+/// 两条例外,都是刻意的:
+/// - [keep] 是这一趟要交出去的那份(也正被播放器放着),**永远不删** —— 删了就是
+///   「刚抓完的文件不见了」。所以一个自己就超过预算的大文件会先留在盘上,等下一次
+///   抓取时以「最旧」的身份被淘汰掉;
+/// - 删不动(被占用、没权限)就收手 —— 这里只是省空间,不该连累播放。
+Future<void> _trimCache(
+  Directory dir, {
+  required File keep,
+  required int budgetBytes,
+}) async {
+  try {
+    // 拿文件名(不是整条路径)认「这一趟要交出去的那份」:临时目录的路径在这边是
+    // `\` 拼的,而调用方那份是拿 `/` 拼的(见 [fetchAudioPreviewFile])—— 比整条
+    // 路径会在 Windows 上认不出来,刚抓好的那条就会被自己删掉(实测踩过)。
+    final keepName = keep.uri.pathSegments.last;
+    final files =
+        dir
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.uri.pathSegments.last != keepName)
+            .toList()
+          // 最久没用过的排前面。同一次运行里连着写的两条时间戳可能撞在一起,那种情况
+          // 再按名字定序 —— 顺序本身不重要,重要的是**有个确定的顺序**,别让淘汰随
+          // 文件系统的调度碰运气。
+          ..sort((a, b) {
+            final byTime = a.statSync().modified.compareTo(
+              b.statSync().modified,
+            );
+            return byTime != 0 ? byTime : a.path.compareTo(b.path);
+          });
+    var total = 0;
+    for (final file in dir.listSync().whereType<File>()) {
+      total += file.statSync().size;
+    }
+    for (final file in files) {
+      if (total <= budgetBytes) break;
+      final size = file.statSync().size;
+      file.deleteSync();
+      total -= size;
+    }
+  } catch (error, stack) {
+    // 收不动无所谓:下次抓成一条时再收一次。
+    swallow('audio.trim', error, stack);
+  }
+}
+
+/// 把文件的时间戳推到现在 —— 淘汰按「上次用过」算,不是「最早写下」。
+Future<void> _touch(File file) async {
+  try {
+    await file.setLastModified(DateTime.now());
+  } catch (error, stack) {
+    // 推不动也不影响播放,只是这一条的淘汰次序会偏。
+    swallow('audio.touch', error, stack);
+  }
+}
+
+/// 把响应体写进 [target],返回写了多少字节(0 = 空响应)。
+Future<int> _fetchInto(HttpClientResponse response, File target) async {
+  final sink = target.openWrite();
+  var written = 0;
+  try {
+    await for (final block in response) {
+      written += block.length;
+      sink.add(block);
+    }
+    await sink.flush();
+    return written;
+  } finally {
+    await sink.close();
+  }
 }
 
 /// 缓存文件的扩展名:照抄 URL 上的后缀(播放器认它挑解码器),认不出就用 `.mp3`。
@@ -329,6 +447,10 @@ String _audioExtOf(String url) {
   final ext = dot >= 0 && dot < last.length - 1
       ? last.substring(dot + 1).toLowerCase()
       : '';
+  // B 站那条 DASH 音轨叫 `.m4s`,内容却是标准的 fMP4(实测文件头 `ftypiso5…moov…mp4a`,
+  // 服务端给的 Content-Type 是 video/mp4)—— 照抄后缀会得到一个谁也认不出的名字,
+  // 它其实就是 `.m4a`。
+  if (ext == 'm4s') return 'm4a';
   const known = <String>['mp3', 'm4a', 'aac', 'ogg', 'wav', 'flac', 'mp4'];
   return known.contains(ext) ? ext : 'mp3';
 }
