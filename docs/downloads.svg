@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400" role="img" aria-label="dhvbjvvb/jicun 各版本累计下载量">
+<rect width="800" height="400" fill="#ffffff"/>
+<line x1="78" y1="338.0" x2="776" y2="338.0" stroke="#e8e8e8" stroke-width="1"/>
+<text x="66" y="342.0" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444" text-anchor="end">0</text>
+<line x1="78" y1="265.0" x2="776" y2="265.0" stroke="#e8e8e8" stroke-width="1"/>
+<text x="66" y="269.0" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444" text-anchor="end">500</text>
+<line x1="78" y1="192.0" x2="776" y2="192.0" stroke="#e8e8e8" stroke-width="1"/>
+<text x="66" y="196.0" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444" text-anchor="end">1000</text>
+<line x1="78" y1="119.0" x2="776" y2="119.0" stroke="#e8e8e8" stroke-width="1"/>
+<text x="66" y="123.0" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444" text-anchor="end">1500</text>
+<line x1="78" y1="46.0" x2="776" y2="46.0" stroke="#e8e8e8" stroke-width="1"/>
+<text x="66" y="50.0" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444" text-anchor="end">2000</text>
+<path d="M78.0,336.2 L252.5,335.1 L427.0,329.8 L601.5,298.1 L776.0,98.1" fill="none" stroke="#e05252" stroke-width="2.5"/>
+<rect x="75.0" y="333.2" width="6" height="6" fill="#e05252"/>
+<rect x="249.5" y="332.1" width="6" height="6" fill="#e05252"/>
+<rect x="424.0" y="326.8" width="6" height="6" fill="#e05252"/>
+<rect x="598.5" y="295.1" width="6" height="6" fill="#e05252"/>
+<rect x="773.0" y="95.1" width="6" height="6" fill="#e05252"/>
+<text x="78.0" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 78.0 358)">v3.0.2</text>
+<text x="252.5" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 252.5 358)">v3.0.3</text>
+<text x="427.0" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 427.0 358)">v3.0.5</text>
+<text x="601.5" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 601.5 358)">v3.2.8</text>
+<text x="776.0" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 776.0 358)">v3.2.9</text>
+<line x1="78" y1="338" x2="776" y2="338" stroke="#444444" stroke-width="1.2"/>
+<text x="20" y="192.0" font-family="Helvetica,Arial,sans-serif" font-size="13" fill="#444444" text-anchor="middle" transform="rotate(-90 20 192.0)">累计下载量</text>
+<text x="427.0" y="386" font-family="Helvetica,Arial,sans-serif" font-size="13" fill="#444444" text-anchor="middle">版本</text>
+<rect x="330.9" y="12" width="138.2" height="26" rx="4" fill="none" stroke="#444444" stroke-width="1"/>
+<rect x="340.9" y="21" width="8" height="8" fill="#e05252"/>
+<text x="354.9" y="30" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444">dhvbjvvb/jicun</text>
+<text x="776" y="386" font-family="Helvetica,Arial,sans-serif" font-size="10" fill="#888888" text-anchor="end">当前发布页各版本累计 · 生成于 2026-10-09</text>
+</svg>

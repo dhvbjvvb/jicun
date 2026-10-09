@@ -156,7 +156,13 @@ flutter test integration_test        # 需要真机或模拟器
 <p align="center">📊 <b>下载量</b></p>
 
 <p align="center">
+  <a href="https://github.com/dhvbjvvb/jicun/releases"><img src="docs/downloads.svg" alt="各版本累计下载量" width="760"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/dhvbjvvb/jicun/releases"><img src="https://img.shields.io/github/downloads/dhvbjvvb/jicun/total?style=for-the-badge&label=%E6%80%BB%E4%B8%8B%E8%BD%BD%E9%87%8F&color=4D6BFE" alt="总下载量"></a>
-  <a href="https://github.com/dhvbjvvb/jicun/releases/latest"><img src="https://img.shields.io/github/downloads/dhvbjvvb/jicun/latest/total?style=for-the-badge&label=%E6%9C%80%E6%96%B0%E7%89%88%E4%B8%8B%E8%BD%BD%E9%87%8F&color=08C" alt="最新版下载量"></a>
+  <a href="https://github.com/dhvbjvvb/jicun/releases/latest"><img src="https://img.shields.io/github/downloads/dhvbjvvb/jicun/latest/total?style=for-the-badge&label=%E6%9C%80%E6%96%B0%E7%89%88&color=08C" alt="最新版下载量"></a>
   <a href="https://github.com/dhvbjvvb/jicun"><img src="https://img.shields.io/github/stars/dhvbjvvb/jicun?style=for-the-badge&label=%E2%98%85&color=2EA44F" alt="GitHub stars"></a>
 </p>
+
+> 曲线按**版本顺序**累计，不是按日期：GitHub 不公开下载量的历史曲线，接口只给每个包一个总数，发布页上现在也只剩这几个版本。数字取自发布页的下载计数；要更新就跑 `python tool/gen_downloads_chart.py`。
