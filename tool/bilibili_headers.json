@@ -1,0 +1,22 @@
+{
+ "note": "B 站 CDN 的请求头约定,Dart 与原生共用的一份事实。两端各有各的实现(lib/ui/playback.dart 的 _isBilibiliHost/两个 UA 常量,android/app/src/main/kotlin/com/videofix/jicun/NativeDownloader.kt 的 isBilibiliHost/两份常量),错了不会崩、只会 403(症状是「音频预览 (0) SOURCE ERROR」或「下载地址已失效」),所以这里把「两边都必须成立」的东西写死成数据。两端的用例读同一个文件:test/playback_headers_test.dart 与 android/app/src/test/kotlin/com/videofix/jicun/NativeDownloaderBilibiliHeadersTest.kt —— 谁单边改了、或者两边一起漂了,都会被抓住。注意它不是运行时配置:常量仍在各自代码里(请求头要能编译期内联),这里只是那份共用的事实。来由:2026-10-05 实测,拿服务端真下发的那条 B 站 DASH 音轨逐个头组合试出来的状态码。",
+ "bilibiliUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+ "browserUserAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+ "referer": "https://www.bilibili.com/",
+ "biliHosts": [
+  "upos-sz-mirrorcosov.bilivideo.com",
+  "upos-hz-mirrorakam.akamaized.net",
+  "upos-x.bilivideo.cn",
+  "bilivideo.com",
+  "www.bilibili.com",
+  "api.bilibili.com"
+ ],
+ "notBiliHosts": [
+  "mirror.akamaized.net",
+  "x.example.akamaized.net",
+  "upos-x.akamaized.net.example.com",
+  "douyinstatic.com",
+  "example.com",
+  ""
+ ]
+}

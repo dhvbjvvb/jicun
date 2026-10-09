@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jicun/ui/playback.dart';
 
@@ -74,5 +77,48 @@ void main() {
       kBrowserUserAgent,
     );
     expect(fetchHeaders('')['User-Agent'], kBrowserUserAgent);
+  });
+
+  group('B 站请求头约定:两端共用一份规格(tool/bilibili_headers.json)', () {
+    // 这份规格是 Dart 与原生**共用的事实**:两边各有各的实现(这边是 `_isBilibiliHost`
+    // 与两个 UA 常量,原生那边是 isBilibiliHost 与两份常量)。谁单边改了、或者两边一起
+    // 漂了 —— 比如把「后缀像但不是这个域」也算成 B 站 —— 都会被下面几条抓住。
+    // 原生侧读的是同一个文件:
+    // android/app/src/test/kotlin/com/videofix/jicun/NativeDownloaderBilibiliHeadersTest.kt
+    Map<String, Object?> spec() =>
+        jsonDecode(File('tool/bilibili_headers.json').readAsStringSync())
+            as Map<String, Object?>;
+
+    test('两个 UA 与 Referer 和规格逐字一致', () {
+      expect(kBilibiliUserAgent, spec()['bilibiliUserAgent']);
+      expect(kBrowserUserAgent, spec()['browserUserAgent']);
+      expect(
+        playbackHeaders('https://upos-x.bilivideo.com/a.m4s')['Referer'],
+        spec()['referer'],
+      );
+    });
+
+    test('规格里认的主机,预览都要带上 Referer 与桌面 UA', () {
+      for (final host in (spec()['biliHosts']! as List).cast<String>()) {
+        final headers = playbackHeaders('https://$host/a.m4s');
+        expect(
+          headers['Referer'],
+          spec()['referer'],
+          reason: '$host 在规格里算 B 站 CDN:$headers',
+        );
+        expect(headers['User-Agent'], kBilibiliUserAgent, reason: host);
+      }
+    });
+
+    test('规格里不认的主机,一个 Referer 都不许带', () {
+      for (final host in (spec()['notBiliHosts']! as List).cast<String>()) {
+        final headers = playbackHeaders('https://$host/a.m4s');
+        expect(
+          headers.containsKey('Referer'),
+          isFalse,
+          reason: '$host 不是 B 站 CDN:替别人家的域名加 Referer 正是这张表要避免的事',
+        );
+      }
+    });
   });
 }
