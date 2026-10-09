@@ -7,7 +7,7 @@
 /// 三件事:
 /// 1. [ensureDeviceIdentity] 启动时跑一趟 —— 没注册过就拿挑战值、让原生生成硬件密钥、
 ///    把证书链交给服务端换一个 device_id 落盘;注册过就只做一次「密钥还在吗」的确认,
-///    顺带在 App 升级后补登记一次(把机型和版本号刷新上去);
+///    顺带在 App 升级后**签名刷新**一次(把版本号 / 机型刷上去,见 [_postRefresh]);
 /// 2. [deviceHeaders] 之后每个**我们自己**的请求带上四个签名头;
 /// 3. 两者的失败**都必须静默** —— 一个头的有无不该让用户看到报错。
 ///
@@ -46,12 +46,25 @@ const String kDeviceHeaderSig = 'X-Jicun-Sig';
 /// 原生通道名,和 MainActivity 里挂的那一个对应。
 const String kDeviceChannel = 'jicun/device';
 
-/// 注册失败之后,隔多久才再试一次。
+/// 刷新展示信息的**公网路径**(`POST /device/refresh`,见 [_postRefresh])。
 ///
-/// 为什么必须有这个:**失败是常态**(没网、域名被阻断、服务端还没上线)。没有退避的话,
-/// 每次解析请求都会先去打两次注册请求,用户网络越差这套东西越添乱。6 小时是「用户换个
-/// 网络环境多半已经发生了」的量级,又不至于一整天都不重试。
-const Duration kDeviceRetryInterval = Duration(hours: 6);
+/// 待签串里用的是**它**(客户端请求的那个路径),不是 nginx 改写之后的后端路径 ——
+/// 服务端那边对应 src/api/device.py 的 REFRESH_PUBLIC_PATH,两边必须一字不差。
+const String kDeviceRefreshPath = '/device/refresh';
+
+/// **App 升级后刷新展示信息**那一条路的退避间隔。
+///
+/// 为什么是 10 分钟而不是 6 小时:刷新走的是 [_postRefresh] 那条**签名**路 —— 只用库里的私钥
+/// 签一次,不生成密钥、不碰证明书,重试的代价几乎为零;而它的全部意义就是把后台看到的版本号 /
+/// 机型刷新掉(挂 6 小时 = 用户看到的是 6 小时前的版本)。
+///
+/// 更早的版本这里是 6 小时(而且共用「失败是常态」那套理由):那时「刷新」只能靠重新登记
+/// 一次,而重登在服务端**必然失败**(证明书里的挑战值一次性,见 [_postRefresh] 的说明)——
+/// 慢慢退避是当时唯一不添乱的选择,代价是设备页永远停在旧值上。
+///
+/// 10 分钟这个量级:比「用户重启一次 App」长一点(不至于反复重启就反复打接口),又比
+/// 「换个网络环境」短得多(那次失败多半就是网络)。成功之后会把它清掉,下次升级立刻能刷。
+const Duration kDeviceRefreshRetryInterval = Duration(minutes: 10);
 
 /// **从没登记成功过**的设备的退避间隔 —— 比上面那个短两个数量级。
 ///
@@ -71,7 +84,7 @@ const Duration _httpTimeout = Duration(seconds: 10);
 /// 正常情况下走 [PackageInfo](= pubspec 的 `version:`),**不写死** —— 写死了每次发版
 /// 都要记得改这里,忘了就是一直在骗服务端。这个常量只在拿不到插件时用(用例环境,
 /// 或者插件异常)。
-const String _fallbackAppVersion = '3.2.8+18';
+const String _fallbackAppVersion = '3.3.0+20';
 
 const MethodChannel _deviceChannel = MethodChannel(kDeviceChannel);
 
@@ -87,13 +100,11 @@ const MethodChannel _deviceChannel = MethodChannel(kDeviceChannel);
 http.Client Function() deviceClientFactory = defaultDeviceClient;
 
 /// 默认的注册 client(挂优选 IP 连接器)。具名是为了让用例替换之后还能换回来。
-http.Client defaultDeviceClient() => IOClient(
-  HttpClient()..connectionFactory = PreferredIpConnector().connect,
-);
+http.Client defaultDeviceClient() =>
+    IOClient(HttpClient()..connectionFactory = PreferredIpConnector().connect);
 
 /// sha256 的小写十六进制。没有查询串时对**空字符串**求摘要(不是 null、不是跳过)。
-String sha256Hex(String text) =>
-    sha256.convert(utf8.encode(text)).toString();
+String sha256Hex(String text) => sha256.convert(utf8.encode(text)).toString();
 
 /// 待签串(canonical string),服务端逐字校验这一个函数。
 ///
@@ -236,7 +247,7 @@ Future<void> _recoverMissingIdentity(Duration timeout) async {
   try {
     prefs = await SharedPreferences.getInstance();
   } catch (_) {
-    return;                       // 拿不到偏好存储(插件异常):什么都别做
+    return; // 拿不到偏好存储(插件异常):什么都别做
   }
   if (!_dueForRetry(prefs, kDeviceBootstrapRetryInterval)) return;
   try {
@@ -285,7 +296,9 @@ Future<void> _ensureDeviceIdentity() async {
       DateTime.now().millisecondsSinceEpoch,
     );
 
-    final registered = await _register();
+    // **没有身份**的设备:允许重建密钥。它们证书里那个挑战值很可能是上一次尝试留下的,
+    // 继续用旧密钥只会永远被判「挑战值无效」(见 [_register] 的说明)。
+    final registered = await _register(prefs, mayRebuildKey: true);
     if (registered == null) return;
     await _storeRegistration(prefs, registered);
     _cachedDeviceId = registered;
@@ -298,7 +311,10 @@ Future<void> _ensureDeviceIdentity() async {
 }
 
 /// 把一次登记的结果落盘:device_id、这次上报的版本、证明时间。
-Future<void> _storeRegistration(SharedPreferences prefs, String deviceId) async {
+Future<void> _storeRegistration(
+  SharedPreferences prefs,
+  String deviceId,
+) async {
   await prefs.setString(kPrefsDeviceId, deviceId);
   await prefs.setString(kPrefsDeviceVersion, await _appVersion());
   await prefs.setInt(
@@ -307,39 +323,59 @@ Future<void> _storeRegistration(SharedPreferences prefs, String deviceId) async 
   );
 }
 
-/// App 升级后补登记一次(密钥没变 → device_id 不变,服务端那条记录是 upsert,不会多出设备)。
+/// App 升级后**刷新一次**「服务端记着的版本号 / 机型」。
+///
+/// 先走 [_postRefresh](`POST /device/refresh`):拿库里的私钥签一次请求,服务端验签后只写
+/// 展示字段 —— 不换 device_id、不碰证明书。
+///
+/// 为什么不再用「重新登记一次」:证明书里的 attestationChallenge 是**生成密钥那一刻**写死的,
+/// 而挑战值一次性 —— 拿旧密钥重登必然被判 CHALLENGE_INVALID。线上实测:248 台设备的版本号
+/// 全停在登记那一天,一台都刷不上来。服务端现在也给这种重登放行了(见它的
+/// [_registered_same_key]),但那是给**还没带签名调用的老包**留的兼容路;这里先走签名路,
+/// 失败了再退回那条。
 ///
 /// 为什么值得多发这一个请求:
 ///   1) 机型(manufacturer/model)、android_api 都是**登记那一刻**上报的 —— 老记录里没有,
-///      不补一次,后台设备页的机型列就一直是空的(用户就是这么反馈的);
+///      不刷一次,后台设备页的机型列就一直是空的(用户就是这么反馈的);
 ///   2) 设备表里的「App 版本」不刷新,管理员看到的是几年前的版本号,排障会被带偏。
 ///
 /// 失败就算了,而且**不碰**落盘的 device_id:密钥还在,那个 id 就还能签。为了刷新一条
 /// 展示信息把设备弄成「没有身份」(enforce 模式下等于全量 403)是绝对划不来的。
-Future<void> _refreshRegistrationIfVersionChanged(SharedPreferences prefs) async {
+Future<void> _refreshRegistrationIfVersionChanged(
+  SharedPreferences prefs,
+) async {
   final version = await _appVersion();
   if (prefs.getString(kPrefsDeviceVersion) == version) return;
-  // 共用同一份时间戳,但这里用**长的那一档**:这台设备的身份是好的(落盘的 id 和密钥
-  // 对得上),只是为了刷新机型/版本号才重登一次,失败了大可 6 小时后再来。
-  if (!_dueForRetry(prefs, kDeviceRetryInterval)) return;
+  // 时间戳**先落盘再发请求**:这一趟崩了/进程被杀,也算"试过了"。
+  if (!_dueForRetry(prefs, kDeviceRefreshRetryInterval)) return;
   await prefs.setInt(
     kPrefsDeviceLastAttempt,
     DateTime.now().millisecondsSinceEpoch,
   );
-  final registered = await _register();
-  if (registered == null) {
-    if (kDebugMode) debugPrint('设备身份:补登记失败,继续用原来的 id');
+
+  // 先走签名刷新。不成的话(服务端还没这个接口、或者这次网络不通)退回「同一把密钥的
+  // 补登记」那条老路 —— **不许**重建密钥:重建会把 device_id 换掉,后台凭空多一行、
+  // 配额和历史全断在原地。
+  var refreshed = await _postRefresh(appVersion: version);
+  refreshed ??= await _register(prefs, mayRebuildKey: false);
+  if (refreshed == null) {
+    if (kDebugMode) debugPrint('设备身份:刷新展示信息失败,继续用原来的 id');
     return;
   }
-  await _storeRegistration(prefs, registered);
-  _cachedDeviceId = registered;
-  if (kDebugMode) debugPrint('设备身份:版本变化,已补登记 $registered');
+  // 只写版本号,**不动** [kPrefsDeviceAttestedAt]:这一趟没走证明书,写它等于把「上次证明
+  // 时间」记成一次没发生过的证明。
+  await prefs.setString(kPrefsDeviceVersion, version);
+  // 成功了就把退避清掉:下次升级(哪怕 10 分钟内)也该立刻刷上。
+  await prefs.remove(kPrefsDeviceLastAttempt);
+  _cachedDeviceId = refreshed;
+  if (kDebugMode) debugPrint('设备身份:版本变化,已刷新展示信息 $refreshed');
 }
 
 /// 距上次尝试够久(或从来没试过)才值得再试一次。
 ///
 /// [interval] 由调用方给,因为两条路「值不值得再试」完全不同:没有身份时用
-/// [kDeviceBootstrapRetryInterval](短),只是刷新机型/版本号时用 [kDeviceRetryInterval](长)。
+/// [kDeviceBootstrapRetryInterval](10 秒档),只是刷新机型/版本号时用
+/// [kDeviceRefreshRetryInterval](10 分钟档 —— 那条路不碰密钥,重试几乎不要钱)。
 bool _dueForRetry(SharedPreferences prefs, Duration interval) {
   final lastAttempt = prefs.getInt(kPrefsDeviceLastAttempt);
   if (lastAttempt == null) return true;
@@ -359,15 +395,39 @@ Future<String?> _nativeDeviceId() async {
 }
 
 /// 完整走一遍注册,成功返回 device_id,失败返回 null(原因只进日志)。
-Future<String?> _register() async {
+///
+/// [mayRebuildKey] 决定「拿到的挑战值和这把密钥当初那个对不上时,要不要重建密钥」:
+///
+///   - **没有身份的设备**(首次注册,或者落盘的 id 已经签不出东西)传 true。它们的证书里
+///     那个 attestationChallenge 是**写死的** —— 密钥一生成就复用(见 DeviceIdentity.kt 的
+///     `createKey`),而重登每次拿到的是新挑战值。线上实测过:这种设备一直撞
+///     `CHALLENGE_INVALID`,永远登记不上,用户看到的是「本接口仅供官方App使用,请更新到
+///     最新版本」而升级、重装都没用。它们反正还没有可用身份,重建一把是唯一出路。
+///   - **只是刷新机型/版本号**(身份是好的)传 false。重建会把 device_id 换掉:服务端凭空
+///     多一行、配额与历史断在原地 —— 划不来,刷不上去就下次再说(见
+///     [_refreshRegistrationIfVersionChanged])。
+Future<String?> _register(
+  SharedPreferences prefs, {
+  required bool mayRebuildKey,
+}) async {
   final challenge = await _fetchChallenge();
   if (challenge == null) return null;
+
+  // 证书里的挑战值只认「这把密钥生成时的那个」:对不上就必须重建(见上面的说明)。
+  final rebuild =
+      mayRebuildKey && prefs.getString(kPrefsDeviceChallenge) != challenge;
+  if (rebuild && kDebugMode) debugPrint('设备身份:挑战值与这把密钥对不上,重建密钥');
 
   final Map<Object?, Object?>? created;
   try {
     created = await _deviceChannel.invokeMapMethod<Object?, Object?>(
       'createKey',
-      <String, String>{'challenge': challenge},
+      <String, String>{
+        'challenge': challenge,
+        // 字符串而不是布尔:这条通道的参数一直是字符串(和 `payload` 一致),
+        // 两边各写一套类型最容易在「只有真机才走到」的分支上对不上。
+        if (rebuild) 'rebuild': 'true',
+      },
     );
   } catch (error) {
     if (kDebugMode) debugPrint('设备身份:生成密钥失败:$error');
@@ -380,12 +440,22 @@ Future<String?> _register() async {
       ?.whereType<String>()
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
-  if (deviceId is! String || deviceId.isEmpty || chain == null || chain.isEmpty) {
+  if (deviceId is! String ||
+      deviceId.isEmpty ||
+      chain == null ||
+      chain.isEmpty) {
     if (kDebugMode) debugPrint('设备身份:原生没给出可用的密钥或证书链');
     return null;
   }
   // attested 只进日志:服务端自己从证书链里验,不信客户端这一句(它也确实不该信)。
   if (kDebugMode) debugPrint('设备身份:硬件证明 attested=${created['attested']}');
+
+  if (rebuild) {
+    // 记下「这把密钥用的是哪个挑战值」—— 下一次重登要靠它判断要不要再重建。
+    // 落盘放在这里而不是登记成功之后:**密钥已经带着新挑战值生成了**(native 那边已经
+    // 重建),这一步描述的就是它;至于 attest 成不成,下次照样按这个记录判断。
+    await prefs.setString(kPrefsDeviceChallenge, challenge);
+  }
 
   final androidApi = await _androidApi();
   return _postAttest(
@@ -414,7 +484,7 @@ Future<String?> _fetchChallenge() async {
 
 /// `POST /device/attest` → device_id。
 ///
-/// 请求体:`{"cert_chain":[…叶到根…],"app_version":"3.2.8+18","android_api":29,`
+/// 请求体:`{"cert_chain":[…叶到根…],"app_version":"3.3.0+20","android_api":29,`
 /// `"manufacturer":"Xiaomi","model":"23127PN0CC"}`(后两项只用于后台显示)。
 /// **证书链不要反转** —— Kotlin 的 `KeyStore.getCertificateChain()` 给的就是叶→根,
 /// 服务端也是按这个顺序读的。
@@ -477,6 +547,88 @@ Future<String?> _postAttest({
   }
 }
 
+/// `POST /device/refresh` → device_id。**签名刷新**展示信息(App 版本号 / 机型)。
+///
+/// 请求体只有展示字段;四个签名头由 [deviceHeaders] 拼,待签串里的路径是**客户端请求的
+/// 公网路径** [kDeviceRefreshPath],和服务端那个常量一字不差(和 `/parse` 同一个约定)。
+///
+/// 为什么单独有这条路,而不是重新登记一次:证明书里的 attestationChallenge 是**生成密钥
+/// 那一刻**写死的,而服务端的挑战值一次性(命中即删、TTL 300 秒)—— 拿旧密钥重登必然被判
+/// CHALLENGE_INVALID。线上实测:248 台设备的版本号全停在登记那一天、一台都刷不上来。
+/// 签名刷新只用库里的私钥签一次:不生成密钥、不碰证明书,也就没有这个问题。
+///
+/// 任何一步不成(拿不到签名、服务端拒了、网络不通)都返回 null —— 调用方据此退回
+/// 「同一把密钥的补登记」那条老路(给服务端还没这个接口的部署兜底)。
+Future<String?> _postRefresh({required String appVersion}) async {
+  final deviceId = _deviceId();
+  if (deviceId == null) return null;
+  final headers = await deviceHeaders('POST', kDeviceRefreshPath, '');
+  if (headers.isEmpty) {
+    // 拿不到签名就别发了:服务端对这个接口**没有签名一律拒**(它不跟 sign_mode 走),
+    // 这一趟纯属白发。调用方会改走补登记。
+    if (kDebugMode) debugPrint('设备身份:刷新拿不到签名头,改用补登记');
+    return null;
+  }
+  final info = await _nativeDeviceInfo();
+  final client = deviceClientFactory();
+  try {
+    final response = await client
+        .post(
+          Uri.parse(apiUrl(kDeviceRefreshPath)),
+          headers: <String, String>{
+            'Content-Type': 'application/json',
+            ...headers,
+          },
+          body: jsonEncode(<String, Object?>{
+            'app_version': appVersion,
+            'android_api': await _androidApi(),
+            // 机型是**自述值**:服务端只拿它做显示,不当任何证据用。取不到就是空串,而那边
+            // 空值不当覆盖 —— 不会把库里已有的机型擦掉。
+            'manufacturer': info['manufacturer'] ?? '',
+            'model': info['model'] ?? '',
+          }),
+        )
+        .timeout(_httpTimeout);
+    final body = _decodeJson(response.bodyBytes);
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        body?['succ'] != true) {
+      if (kDebugMode) {
+        debugPrint(
+          '设备身份:refresh 失败 HTTP ${response.statusCode} '
+          '${body?['retdesc'] ?? body?['msg'] ?? ''}',
+        );
+      }
+      return null;
+    }
+    final data = body?['data'];
+    final id = data is Map ? data['device_id'] : null;
+    return (id is String && id.isNotEmpty) ? id : null;
+  } catch (error) {
+    if (kDebugMode) debugPrint('设备身份:refresh 请求失败:$error');
+    return null;
+  } finally {
+    client.close();
+  }
+}
+
+/// 机型的自述值:`{manufacturer, model}`,来自原生 `Build.MANUFACTURER` / `Build.MODEL`。
+///
+/// 走的是**独立**的原生方法(见 DeviceIdentity.kt 的 deviceInfo),不经过 `createKey` ——
+/// 刷新这条路不该为了报个机型去读(甚至生成)设备密钥。原生不认识这个方法(更老的包)或者
+/// 报错,都回空表:服务端那边空值不当覆盖。
+Future<Map<String, String>> _nativeDeviceInfo() async {
+  try {
+    final info = await _deviceChannel.invokeMapMethod<Object?, Object?>('deviceInfo');
+    return <String, String>{
+      'manufacturer': '${info?['manufacturer'] ?? ''}',
+      'model': '${info?['model'] ?? ''}',
+    };
+  } catch (_) {
+    return const <String, String>{};
+  }
+}
+
 /// 打一个 GET,拿 JSON 对象。任何失败都返回 null(这条路全是静默的)。
 Future<Map<String, dynamic>?> _getJson(String url) async {
   final client = deviceClientFactory();
@@ -506,7 +658,7 @@ Map<String, dynamic>? _decodeJson(List<int> bytes) {
   }
 }
 
-/// 本机版本号,形如 `3.2.8+18`(= pubspec 的 `version:` 那一行)。
+/// 本机版本号,形如 `3.3.0+20`(= pubspec 的 `version:` 那一行)。
 Future<String> _appVersion() async {
   try {
     final info = await PackageInfo.fromPlatform();
@@ -543,7 +695,8 @@ Future<int?> _androidApi() async {
 ///    `SharedPreferences.getInstance()` 的通道没人应答,这个 Future 就永远不完成 ——
 ///    解析请求会跟着一起挂住(实测:解析页用例整片超时)。「拿不到头就照常发」这条降级
 ///    不该被一个偏好的读卡死。
-String? _deviceId() => (_cachedDeviceId?.isEmpty ?? true) ? null : _cachedDeviceId;
+String? _deviceId() =>
+    (_cachedDeviceId?.isEmpty ?? true) ? null : _cachedDeviceId;
 
 /// 给一个请求拼四个签名头。**没注册或签名失败就返回空 Map** —— 调用方据此不加头,
 /// 请求照常发出去(服务端 `log` 模式下照样放行)。
@@ -575,9 +728,10 @@ Future<Map<String, String>> deviceHeaders(
   // 只把「拼串」交给原生:签名要过安全芯片,那边拿到的是一段字节(见原生 sign)。
   final String? signature;
   try {
-    signature = await _deviceChannel.invokeMethod<String>('sign', <String, String>{
-      'payload': base64.encode(utf8.encode(payload)),
-    });
+    signature = await _deviceChannel.invokeMethod<String>(
+      'sign',
+      <String, String>{'payload': base64.encode(utf8.encode(payload))},
+    );
   } catch (error) {
     if (kDebugMode) debugPrint('设备身份:签名失败:$error');
     return const <String, String>{};

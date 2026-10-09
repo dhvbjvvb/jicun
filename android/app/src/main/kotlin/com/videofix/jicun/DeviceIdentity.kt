@@ -165,7 +165,10 @@ internal object DeviceIdentity {
                 val method = call.method
                 val challenge = call.argument<String>("challenge")
                 val payload = call.argument<String>("payload")
-                work.execute { dispatch(method, challenge, payload, result) }
+                // 重登时挑战值变了 → Dart 侧会带这个开关,要求把这把废密钥清掉重建
+                // (见 createKey 的说明)。字符串而不是布尔:这条通道的参数一直是字符串。
+                val rebuild = call.argument<String>("rebuild") == "true"
+                work.execute { dispatch(method, challenge, payload, rebuild, result) }
             }
     }
 
@@ -174,13 +177,15 @@ internal object DeviceIdentity {
         method: String,
         challenge: String?,
         payload: String?,
+        rebuild: Boolean,
         result: MethodChannel.Result,
     ) {
         val outcome = runCatching {
             when (method) {
                 "deviceId" -> existingDeviceId()
                 "androidApi" -> Build.VERSION.SDK_INT
-                "createKey" -> createKey(challenge ?: "")
+                "deviceInfo" -> deviceInfo()
+                "createKey" -> createKey(challenge ?: "", rebuild)
                 "certificateChain" -> certificateChain()
                 "sign" -> signB64(payload ?: "")
                 else -> throw IllegalArgumentException("没有这个方法:$method")
@@ -215,6 +220,23 @@ internal object DeviceIdentity {
         return deviceIdFromSpki(leaf.publicKey.encoded)
     }
 
+    /**
+     * 机型(自述值),回 `{manufacturer, model}`。
+     *
+     * **为什么和 createKey 分开**:那条「App 升级后刷新版本号 / 机型」的路(见
+     * device_identity.dart 的 _postRefresh)不该碰密钥 —— 它只要报一下机型,没必要为此去
+     * 读(甚至生成)设备密钥。值来自 Build.MANUFACTURER / Build.MODEL,取不到就是空串。
+     *
+     * **为什么要在证明书之外另报一份**:证明书里那份 attestationIdBrand/Device/Product 很多
+     * 机器根本不提供 —— 实测小米 API 36 的证书里它就是空的(同一张证书里 rootOfTrust 一切
+     * 正常)。后台要「认出这是哪台机器」,只能靠这里。明确一点:这是**自述值**,服务端只拿它
+     * 做显示,不当任何证据用(见 src/api/device.py 的 _client_device_info)。
+     */
+    private fun deviceInfo(): Map<String, Any?> = mapOf(
+        "manufacturer" to (Build.MANUFACTURER ?: ""),
+        "model" to (Build.MODEL ?: ""),
+    )
+
     /** 证书链(base64,叶→根)。Kotlin 这边 `getCertificateChain` 就是这个顺序,**不要反转**。 */
     private fun certificateChain(): List<String>? =
         deviceChain()?.map { base64Standard(it.encoded) }
@@ -225,9 +247,22 @@ internal object DeviceIdentity {
      * **已存在就绝不重建**:重建会换掉公钥,device_id 跟着换 —— 服务端那边等于凭空多出一台
      * 新设备,老 id 的统计和限流记录全断在原地。挑战值是**第一次生成时**用的那一个,后面的
      * 签名直接复用这把密钥,不再重新证明(证明只要做一次,服务端也已经存下了那张证书链)。
+     *
+     * **唯一的例外是 [rebuild]** —— 重登时挑战值换了,而证书里那个挑战值是**写死的**:
+     * 继续用旧密钥的话,服务端验挑战值那一关必然不过(CHALLENGE_INVALID),这台设备就再也
+     * 登记不上,用户看到的是「本接口仅供官方App使用,请更新到最新版本」而升级、重装都没用
+     * (线上实测 2026-10-06:一台上过安全芯片、链也验得通的手机卡在这里)。所以那种情况下
+     * 宁可换一个 device_id:走到这一步的设备本来就还没有可用身份,不重建才是死路。
+     * Dart 侧只在「没有身份」那条路上带这个开关,刷新机型/版本号时不带(见 device_identity.dart
+     * 的 _register)。
      */
-    private fun createKey(challengeText: String): Map<String, Any?> {
+    private fun createKey(challengeText: String, rebuild: Boolean): Map<String, Any?> {
         val challenge = if (challengeText.isEmpty()) ByteArray(0) else decodeBase64Url(challengeText)
+        if (rebuild) {
+            Log.w(TAG, "挑战值变了,清掉旧别名重建设备密钥")
+            runCatching { keyStore().deleteEntry(DEVICE_KEY_ALIAS) }
+            store = null
+        }
         ensureDeviceKey(challenge)
 
         // 读证书链这一步**必须能自愈**。线上实测过一次:重装之后「挑战值拿到了,却始终
@@ -257,14 +292,8 @@ internal object DeviceIdentity {
             // 有 Key Attestation 扩展 = 这把公钥是硬件签出来并附了证明的(StrongBox 或 TEE)。
             "attested" to (leaf.getExtensionValue(KEY_ATTESTATION_OID) != null),
             "certificateChain" to chain.map { base64Standard(it.encoded) },
-            // 机型。**为什么要在证明书之外另报一份**:证明书里那份 attestationIdBrand/
-            // Device/Product 很多机器根本不提供 —— 实测小米 API 36 的证书里它就是空的
-            // (同一张证书里 rootOfTrust 一切正常)。后台要「认出这是哪台机器」,只能靠这里。
-            // 明确一点:这是**自述值**,服务端只拿它做显示,不当任何证据用(见
-            // src/api/device.py 的 _client_device_info)。
-            "manufacturer" to (Build.MANUFACTURER ?: ""),
-            "model" to (Build.MODEL ?: ""),
-        )
+            // 机型那份走 deviceInfo():它自己带说明,而且刷新那条路也要用同一条(不碰密钥)。
+        ) + deviceInfo()
     }
 
     /**

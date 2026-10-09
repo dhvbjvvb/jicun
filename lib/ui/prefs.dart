@@ -45,7 +45,8 @@ const String kPrefsSponsors = 'sponsors.list';
 //
 // `device.id` 是服务端认设备的那个 id(它自己也是从硬件公钥推出来的);另外两个是本地
 // 时间戳 —— 前者记证明是什么时候办下来的(排障用),后者用来做失败重试的退避:
-// 没它的话每次解析请求都会先去打注册接口(见 kDeviceRetryInterval)。
+// 它就是「上次尝试」的时间,两条路各用各的间隔(见 kDeviceBootstrapRetryInterval /
+// kDeviceRefreshRetryInterval),刷新成功时会被清掉。
 const String kPrefsDeviceId = 'device.id';
 const String kPrefsDeviceAttestedAt = 'device.attestedAt';
 const String kPrefsDeviceLastAttempt = 'device.lastAttempt';
@@ -53,6 +54,15 @@ const String kPrefsDeviceLastAttempt = 'device.lastAttempt';
 // App 版本都是**登记那一刻**报上去的,升级后不补一次,后台那条记录就永远停在旧值
 // (机型那列会一直空着)。见 device_identity.dart 的 _refreshRegistrationIfVersionChanged。
 const String kPrefsDeviceVersion = 'device.version';
+// 当前这把设备密钥**生成时**用的挑战值。
+//
+// 它是这套东西里唯一「只在重登时才有用」的一位:证书里的 attestationChallenge 是**写死的**
+// ——密钥已存在,原生就复用它、不会再生成一次(见 DeviceIdentity.kt 的 createKey),于是
+// 第二次登记时证书里带的还是**第一次**那个挑战值,而服务端早就把它核销/让它过期了。
+// 线上实测:这种设备一直撞 CHALLENGE_INVALID,永远登记不上,用户看到的是「本接口仅供官方
+// App使用,请更新到最新版本」而升级、重装都没用。所以重登前要比一比这个记录 —— 对不上就
+// 让原生重建密钥(见 device_identity.dart 的 _register)。
+const String kPrefsDeviceChallenge = 'device.keyChallenge';
 
 /// 系统主题的三个选项。存进 [kPrefsThemeMode],设置页与根壳都读它 ——
 /// 放在这里是为了让 ShellController 和设置页都能引用,不必互相 import。

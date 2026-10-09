@@ -679,7 +679,7 @@ void main() {
         kPrefsDeviceId: id,
         // 版本也要写当前这个:不写会走「升级补登记」那条路,而那条路用的是**真实**
         // client(deviceClientFactory 默认值)—— 单元用例不该打线上接口。
-        kPrefsDeviceVersion: '3.2.8+18',
+        kPrefsDeviceVersion: '3.3.0+20',
       });
       resetDeviceIdentityCache();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
