@@ -178,7 +178,7 @@ void resetDeviceIdentityCache() {
 /// 确保这台设备已经注册过(幂等,可以反复调)。
 ///
 /// 流程:读落盘的 device_id → 有就问一次原生「密钥还在不在」→ 都在就直接返回
-/// (顺带看一眼 App 版本,升级过就补登记一次,见 [_refreshRegistrationIfVersionChanged]);
+/// (顺带看一眼 App 版本,升级过就按签名刷新一次,见 [_refreshRegistrationIfVersionChanged]);
 /// 否则拿挑战值、生成密钥、交证书链、落盘 device_id。
 ///
 /// **任何一步失败都不抛**:解析、播放、下载都不该因为这件事变差。拿不到身份时 APP
@@ -330,8 +330,8 @@ Future<void> _storeRegistration(
 ///
 /// 为什么不再用「重新登记一次」:证明书里的 attestationChallenge 是**生成密钥那一刻**写死的,
 /// 而挑战值一次性 —— 拿旧密钥重登必然被判 CHALLENGE_INVALID。线上实测:248 台设备的版本号
-/// 全停在登记那一天,一台都刷不上来。服务端现在也给这种重登放行了(见它的
-/// [_registered_same_key]),但那是给**还没带签名调用的老包**留的兼容路;这里先走签名路,
+/// 全停在登记那一天,一台都刷不上来。服务端现在也给这种重登放行了(见服务端那边的
+/// `_registered_same_key` 判定),但那是给**还没带签名调用的老包**留的兼容路;这里先走签名路,
 /// 失败了再退回那条。
 ///
 /// 为什么值得多发这一个请求:
@@ -619,7 +619,9 @@ Future<String?> _postRefresh({required String appVersion}) async {
 /// 报错,都回空表:服务端那边空值不当覆盖。
 Future<Map<String, String>> _nativeDeviceInfo() async {
   try {
-    final info = await _deviceChannel.invokeMapMethod<Object?, Object?>('deviceInfo');
+    final info = await _deviceChannel.invokeMapMethod<Object?, Object?>(
+      'deviceInfo',
+    );
     return <String, String>{
       'manufacturer': '${info?['manufacturer'] ?? ''}',
       'model': '${info?['model'] ?? ''}',

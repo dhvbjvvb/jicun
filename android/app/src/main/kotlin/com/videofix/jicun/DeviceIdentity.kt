@@ -48,9 +48,10 @@ internal const val DEVICE_CHANNEL = "jicun/device"
 /**
  * 密钥别名。
  *
- * 带 `_v1` 是给**以后换算法/换参数**留的位:别名一改,老设备会当成「没有密钥」重新生成一把,
- * device_id 跟着变(服务端那边等于多一台设备),但那至少是个可控的迁移;同一个别名下换参数
- * 做不到 —— AndroidKeyStore 里已存在的条目不会因为 `KeyGenParameterSpec` 变了而重建。
+ * 别名末尾带着版本后缀(`jicun_device_v1` 里的 v1):它是给**以后换算法/换参数**留的位 ——
+ * 别名一改,老设备会当成「没有密钥」重新生成一把,device_id 跟着变(服务端那边等于多一台
+ * 设备),但那至少是个可控的迁移;同一个别名下换参数做不到 —— AndroidKeyStore 里已存在的
+ * 条目不会因为 `KeyGenParameterSpec` 变了而重建。
  */
 internal const val DEVICE_KEY_ALIAS = "jicun_device_v1"
 

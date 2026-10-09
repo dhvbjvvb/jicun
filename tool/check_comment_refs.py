@@ -62,7 +62,12 @@ MIN_NAME = 3  # `_n` / `_1` are placeholders in prose, not names
 # Real names that comments point at on purpose. Each group says why it is here -- and
 # every entry is a name nobody checks any more, so the list is meant to stay short.
 FOREIGN = {
-    "服务端(Go/Python)的表名/字段名": {"DOMAIN_TO_NAME", "_fetch_audio_stream"},
+    # 服务端(Go/Python)的名字:表名、字段名,以及客户端注释专门点名对照的那个判定函数。
+    "服务端(Go/Python)的名字": {
+        "DOMAIN_TO_NAME",
+        "_fetch_audio_stream",
+        "_registered_same_key",
+    },
     # 服务端 /api/device/attest 的错误码。APP 这边的注释引用它,是为了说清「撞的是哪一关」
     # (登记失败时客户端只看得到 retdesc,而 reason 那一档只有服务端有)。
     "服务端 /device 接口的错误码": {"CHALLENGE_INVALID", "CERT_CHAIN_INVALID"},
