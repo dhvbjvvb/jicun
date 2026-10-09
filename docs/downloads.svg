@@ -10,12 +10,12 @@
 <text x="66" y="123.0" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444" text-anchor="end">1500</text>
 <line x1="78" y1="46.0" x2="776" y2="46.0" stroke="#e8e8e8" stroke-width="1"/>
 <text x="66" y="50.0" font-family="Helvetica,Arial,sans-serif" font-size="12" fill="#444444" text-anchor="end">2000</text>
-<path d="M78.0,336.2 L252.5,335.1 L427.0,329.8 L601.5,298.1 L776.0,98.1" fill="none" stroke="#e05252" stroke-width="2.5"/>
+<path d="M78.0,336.2 L252.5,335.1 L427.0,329.8 L601.5,298.1 L776.0,98.0" fill="none" stroke="#e05252" stroke-width="2.5"/>
 <rect x="75.0" y="333.2" width="6" height="6" fill="#e05252"/>
 <rect x="249.5" y="332.1" width="6" height="6" fill="#e05252"/>
 <rect x="424.0" y="326.8" width="6" height="6" fill="#e05252"/>
 <rect x="598.5" y="295.1" width="6" height="6" fill="#e05252"/>
-<rect x="773.0" y="95.1" width="6" height="6" fill="#e05252"/>
+<rect x="773.0" y="95.0" width="6" height="6" fill="#e05252"/>
 <text x="78.0" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 78.0 358)">v3.0.2</text>
 <text x="252.5" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 252.5 358)">v3.0.3</text>
 <text x="427.0" y="358" font-family="Helvetica,Arial,sans-serif" font-size="11" fill="#444444" text-anchor="middle" transform="rotate(-30 427.0 358)">v3.0.5</text>

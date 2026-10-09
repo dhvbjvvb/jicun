@@ -203,7 +203,10 @@ def main() -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(build_svg(args.repo, points, date.today().isoformat()), encoding="utf-8")
+    # newline="\n":生成的资产固定 LF —— 这台开发机是 CRLF,不写死的话每次重跑都多一条
+    # 「行尾被归一」的警告(内容一样,只是看着烦)。
+    with out.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(build_svg(args.repo, points, date.today().isoformat()))
 
     print(f"写了 {out.relative_to(ROOT) if out.is_relative_to(ROOT) else out}:")
     for tag, downloads, running in points:
