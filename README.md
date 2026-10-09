@@ -206,18 +206,20 @@ flutter build apk --release -PallowDebugSigning=true   # 这个包的签名是 d
 ```bash
 flutter analyze
 dart format lib test                 # 格式门：CI 会校验，先本地跑一遍
-.\tool\run_tests.ps1                 # 逐文件跑 test/；只在 tester 崩了时重试一次
+.\tool\run_tests.ps1                 # 整套跑一遍 → 只把被杀/报失败的文件单独再跑（-PerFile 才是逐文件跑）
 cd android && ./gradlew :app:testDebugUnitTest    # Kotlin：下载器纯逻辑、启动入口、媒体库命名、落盘规矩
 python tool/gen_logic_vectors.py     # 校验跨端测试向量与实现一致
 python tool/check_comment_refs.py    # 注释里点名的标识符必须还在
 flutter test integration_test        # 需要真机或模拟器
-flutter test --coverage              # 整套一次跑完，产出 coverage/lcov.info
+flutter test --coverage              # 整套一次跑完，产出 coverage/lcov.info（想顺带把被杀的补回来：.\tool\run_tests.ps1 -Coverage）
 python tool/coverage_summary.py      # 覆盖率摘要（只给人看；CI 里有，不作门）
 ```
 
-**为什么要逐文件跑、崩溃才重试一次**：Windows 上的 `flutter_tester` 有一条引擎级缺陷 —— `ShaderMask` + 滚动列表在软件渲染下会以 `0xc0000005` 静默杀掉整个测试进程，一次带走同一文件里剩下的几十条用例。触发是概率性的（约 0.1%/用例），和具体用例无关。逐文件跑把爆炸半径限制在一个文件里；**崩溃那次重试一次**把那点概率抹掉，本机与 CI 用同一套跑法，才不会出现「本地红、CI 绿」这种没法归因的情况。
+**为什么整套跑完之后还要单独重跑几个文件**：Windows 上的 `flutter_tester.exe` 有一条引擎级缺陷 —— 它以 `0xc0000005`（访问违例，偏移恒定 `0x35aaf0`）静默杀掉整个测试进程，一次带走同一文件里剩下的几十条用例；撞在加载期就是 `Failed to load "…": Connection closed before test suite loaded.`。2026-10-06 在本机实测：整套一轮（450 条上下）固定崩 4~6 个进程 —— 所以 `flutter test` 整套跑几乎不可能绿；单个文件 6 次里崩 0~1 次，而设置页/历史页那种十几条全是重渲染用例的文件能连着崩 4~6 次；`flutter create` 出来的**空白工程**也崩过一次（所以跟本仓库代码无关）；并发 1 / 2 / 12 都崩，内存与句柄全程平稳。概率大致跟「这个进程渲染了多少」成正比，单条约 1%~8%。
 
-而**断言/异常失败一律不重试** —— 重试会把「偶尔挂一次」的真 bug 抹成绿色。判据是「看有没有失败标记」，不是「看有没有 `did not complete`」：后者只是崩溃的一种形态（实测崩得最干脆那次只剩一行 `loading …`），而加载期就被杀时 flutter 报的是 `Failed to load "…": Connection closed before test suite loaded.`，它同时带 `Failed to load` 和 `[E]`，先查标记就会把这条 flake 判成真失败。改过判据跑一下自检：`.\tool\run_tests.ps1 -SelfCheck`（14 条形状，含上面这些真实原文）。
+所以这套跑法是两段：**第一段整套跑一遍**（快，和平时敲的那条命令一致），**第二段只把第一段里「被杀」和「报失败」的文件单独再跑**。整套跑被崩溃打断时有些文件根本没轮到，那些算「没跑到」，一样进第二段 —— 少跑一个文件却报绿是最不能接受的错。整文件怎么跑都被杀时，再把它**拆成一条一条用例**跑（`--plain-name`；用例名不是清一色字面量就不拆，拆了会漏跑用例）：一个进程只渲染一条用例，概率掉一个数量级。第二段重跑之间默认歇 3 秒、每个文件默认 3 次机会（`-Retry` / `-PauseSeconds` 可调）—— 崩溃是成阵的，同一分钟里连着跑往往一条都出不来。
+
+而**断言/异常失败一律不重跑** —— 重跑会把「偶尔挂一次」的真 bug 抹成绿色。判据是「看有没有失败标记」，不是「看有没有 `did not complete`」：后者只是崩溃的一种形态（实测崩得最干脆那次只剩一行 `loading …`），而加载期就被杀时 flutter 报的是 `Failed to load "…": Connection closed before test suite loaded.`，它同时带 `Failed to load` 和 `[E]`，先查标记就会把这条 flake 判成真失败。改过判据或输出解析跑一下自检：`.\tool\run_tests.ps1 -SelfCheck`（21 条：7 条崩溃形状 + 7 条失败标记 + 5 条整套输出解析 + 2 条用例名抓取，形状都是本机实测原文）。
 
 **覆盖率只做参考，不作门**：Widget 渲染代码天然难覆盖，而堆行数只要多写几条不痛不痒的用例就行 —— 这个数字两个方向都证不了什么。它的用处是回答“哪些分支没人走过”，那是给人看的问题，不是给 CI 判的问题。所以 CI 里那个 job 是 `continue-on-error`，结论写进 job summary，红了不拦合并。
 
