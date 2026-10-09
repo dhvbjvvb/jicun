@@ -26,15 +26,6 @@
 
 > 📱 本仓库只发布 Android 端源码。Windows 桌面端见 [jicun-desktop](https://github.com/dhvbjvvb/jicun-desktop)。
 
-## 📥 下载与安装
-
-- 到 [最新发布页](https://github.com/dhvbjvvb/jicun/releases/latest) 下载 APK，手机上点开安装，**支持应用内自动更新**。
-- **系统要求**：Android 10（API 29）或更高；体积约 24 MB（arm64）。
-- 第一次装的时候会要求你允许「安装未知应用」—— 从浏览器或聊天软件里点开 APK 都会走这一步。
-- 发布页挂着通用包和按 CPU 架构拆分的包，**应用内更新会按你手机的架构自己挑**，手动下载随便挑一个装也行。
-
-> **为什么最低 Android 10**：文件写进相册那一步用的是分区存储那套 API（`RELATIVE_PATH` / `IS_PENDING` / 按卷取集合），更老的系统上文件下得下来，却存不进相册。
-
 ## ✨ 能干什么
 
 - 🔗 **链接解析**：整段分享文案粘进来会自动挑出链接，也可以点「粘贴」读剪贴板。
@@ -152,12 +143,3 @@ flutter test integration_test        # 需要真机或模拟器
 > 本项目只提供「解析你自己有权访问的链接并下载」这一技术能力，不提供任何内容、不破解任何权限或付费墙；请遵守各内容平台的服务条款与当地法律，使用风险自负。
 
 ---
-
-<p align="center">📊 <b>下载量</b></p>
-
-<p align="center">
-  <a href="https://github.com/dhvbjvvb/jicun/releases"><img src="https://img.shields.io/github/downloads/dhvbjvvb/jicun/total?style=for-the-badge&label=%E6%80%BB%E4%B8%8B%E8%BD%BD%E9%87%8F&color=4D6BFE" alt="总下载量"></a>
-  <a href="https://github.com/dhvbjvvb/jicun/releases/latest"><img src="https://img.shields.io/github/downloads/dhvbjvvb/jicun/latest/total?style=for-the-badge&label=%E6%9C%80%E6%96%B0%E7%89%88&color=08C" alt="最新版下载量"></a>
-  <a href="https://github.com/dhvbjvvb/jicun"><img src="https://img.shields.io/github/stars/dhvbjvvb/jicun?style=for-the-badge&label=%E2%98%85&color=2EA44F" alt="GitHub stars"></a>
-</p>
-
